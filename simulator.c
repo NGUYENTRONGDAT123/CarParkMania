@@ -14,18 +14,6 @@
 #define SHARE_NAME "PARKING"
 #define SHARE_SIZE 2920
 
-//a shared memory control structure
-typedef struct shared_memory {
-    //name of the share memory object
-    const char *name;
-
-    //the file descriptor used to manafe the shared memory object
-    int fd;
-
-    data_t data;
-
-} shared_memory_t;
-
 // 5 threads for simulation
 pthread_t tid[5];
 
@@ -72,41 +60,93 @@ typedef struct data {
     exit_t ex[5];
 } data_t;
 
+//a shared memory control structure
+typedef struct shared_memory {
+    //the file descriptor used to manafe the shared memory object
+    int fd;
+
+    //address
+    data_t *data;
+
+} shared_memory_t;
+
+/* format of a single request. */
+struct request {
+    void *number;           /* number of the request                  */
+    struct request *next;   /* pointer to next request, NULL if none. */
+    void *(*func)(void *);  // Function the pointer will complete
+};
+struct request *requests = NULL;     /* head of linked list of requests. */
+struct request *last_request = NULL; /* pointer to last request.         */
+
 // //get the license
-// void get_license(char license_plate[6], LPR_t lpr, void *shm) {
+// void get_license(char license_plate[6], LPR_t *lpr, void *shm) {
+//     char *license_ptr = lpr->license;
 //     pthread_mutex_lock(&lpr->m);
-//     lpr->license = license_plate;
+//     *license_ptr = license_plate;
 //     pthread_mutex_unlock(&lpr->m);
 
 //     pthread_cond_signal(&lpr->c);
 // }
 
-int shm_fd;
-void *shm, *p;
-LPR_t *shm_test;
-int test;
-
-int main(int argc, char **argv) {
-    // read the licenses
-    // FILE *f = fopen(argv[1], "r");
-
+//create shared memory
+bool get_shared_object(shared_memory_t *shm) {
     //delete the segment if exists
     shm_unlink(SHARE_NAME);
 
     //create the segment
-    if ((shm_fd = shm_open(SHARE_NAME, O_CREAT | O_RDWR, S_IRWXU)) == -1) {
+    if ((shm->fd = shm_open(SHARE_NAME, O_CREAT | O_RDWR, S_IRWXU)) == -1) {
+        shm->data = NULL;
         printf("Failed to create the segment\n");
-        return 0;
+        return false;
     }
 
     //configure the size
-    ftruncate(shm_fd, SHARE_SIZE);
+    ftruncate(shm->fd, SHARE_SIZE);
 
     // map the shared data using mmap, and save the address in shm
-    shm = mmap(0, SHARE_SIZE, PROT_WRITE | PROT_READ, MAP_SHARED, shm_fd, 0);
-    if (shm == (void *)-1) {
+    shm->data = mmap(0, SHARE_SIZE, PROT_WRITE | PROT_READ, MAP_SHARED, shm->fd, 0);
+    if (shm->data == (void *)-1) {
         printf("Failed to create the shared memory\n");
-        return 0;
+        return false;
+    }
+
+    // shared_memory_t *shm1 = shm;
+    // data_t *data = shm->data;
+    // entrance_t *en_ptr = data->en;
+    // long int a = (long int)shm;
+    // long int b = (long int)data;
+    // long int c = (long int)(en_ptr + sizeof(entrance_t));
+    // // printf("%zu\n", sizeof(entrance_t));
+    // // printf("%ld\n", b - c);
+
+    // printf("%p", shm);
+    char *s;
+    char c;
+    s = (char *)shm;
+    for (c = 'a'; c <= 'z'; c++) {
+        *s++ = c;
+    }
+    *s = 0;
+
+    return true;
+}
+
+int main(int argc, char **argv) {
+    // read the licenses
+    FILE *f = fopen("plates.txt", "r");
+    char license_plate[6];
+
+    shared_memory_t shm;
+
+    if (get_shared_object(&shm)) {
+        printf("created shared memory succesfully!\n");
+    } else {
+        printf("failed to create segment!");
+    }
+
+    while (fgets(license_plate, 6, f) != NULL) {
+        fputs(license_plate, stdout);
     }
 
     //intialize mutexes
@@ -114,9 +154,12 @@ int main(int argc, char **argv) {
         pthread_mutex_init(&mutex[i], NULL);
         pthread_cond_init(&cond[i], NULL);
     }
+    printf("%zu\n", sizeof(data_t));
 
-    munmap((void *)shm, 2920);
-    close(shm_fd);
+    while (true) {
+    }
+
+    // fclose(f);
 
     return 0;
 }

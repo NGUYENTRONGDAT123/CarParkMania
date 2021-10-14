@@ -58,7 +58,7 @@ void tempmonitor(int level) {
     for (;;) {
         // Calculate address of temperature sensor
         addr = 0150 * level + 2496;
-        = *((int16_t *)(shm + addr));
+        temp = *((int16_t *)(shm + addr));
 
         // Add temperature to beginning of linked list
         newtemp = malloc(sizeof(struct tempnode));
