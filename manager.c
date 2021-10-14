@@ -17,6 +17,7 @@
 #define LEVELS 5
 #define ENTRANCES 5
 #define EXITS 5
+#define MAX_CAPACITY 20
 
 // struct for LPR
 typedef struct LPR {
@@ -191,9 +192,8 @@ void htab_destroy(htab_t *h) {
 // global variables
 int shm_fd;
 void *ptr;
-pthread_t *lprthreads;
-pthread_t *bgthreads;
 pthread_t *enthreads;
+pthread_t *exthreads;
 pthread_mutexattr_t m_shared;
 pthread_condattr_t c_shared;
 htab_t h;
@@ -233,42 +233,96 @@ void *control_entrance(void *arg) {
     info_sign_t *ist = &en->ist;  // address of the ist
     printf("ENTRANCE(# %ld) CREATED!\n", pthread_self());
     for (;;) {
-        if (lpr->license[0] == '\0') {
-            printf("IT DOESNT EXISTS!\n");
-        } else {
-            printf("IT EXISTS!\n");
-            pthread_mutex_lock(&lpr->m);
-            // it can only be started if there is license to read
-            pthread_cond_wait(&lpr->c, &lpr->m);
-            if (htab_find(&h, lpr->license) != NULL) {
-                printf("LPR(# %ld) has found this car can be parked!\n", pthread_self());
-                // signalling the boomgate to open;
-                pthread_cond_signal(&bg->c);
+        // if the lpr doesnt have something to read
+        // if (lpr->license[0] == '\0') {
+        //     printf("IT DOESNT EXISTS YET!\n");
+        // } else {
+        // if the lpr has something to read signal the lpr to read
+        // wait for 2 ms to start reading
+        usleep(2 * 1000);
+        printf("ENTRANCE(# %ld) IS READING!\n", pthread_self());
+        pthread_cond_signal(&lpr->c);
+        pthread_mutex_lock(&lpr->m);
+        // it can only be started if there is a signal
+        pthread_cond_wait(&lpr->c, &lpr->m);
+        if (htab_find(&h, lpr->license) != NULL) {
+            printf("LPR(# %ld) has found this car can be parked!\n", pthread_self());
+            // signalling the boomgate to open;
+            pthread_cond_signal(&bg->c);
 
-                // opening the boomgate
-                if (bg->s == 'C') {
-                    pthread_mutex_lock(&bg->m);
-                    pthread_cond_wait(&bg->c, &bg->m);
-                    printf("ENTRANCE(# %ld) is opening the boomgate!\n", pthread_self());
-                    bg->s = 'R';
-                    pthread_mutex_lock(&bg->m);
-                    // wait for the gate is opened for 10ms to change status to open
-                    printf("ENTRANCE(# %ld) is raising the boomgate!\n", pthread_self());
-                    usleep(10 * 1000);
-                    bg->s = 'O';
-                    // after fully opened, wait for 20 ms
-                    usleep(20 * 1000);
-                    bg->s = 'L';
-                    // wait for the gate is closed for 10ms to change status to closed
-                    printf("ENTRANCE(# %ld) is lowering the boomgate!\n", pthread_self());
-                    usleep(10 * 1000);
-                    bg->s = 'C';
-                    pthread_mutex_unlock(&bg->m);
-                }
+            // opening the boomgate
+            if (bg->s == 'C') {
+                pthread_mutex_lock(&bg->m);
+                pthread_cond_wait(&bg->c, &bg->m);
+                printf("ENTRANCE(# %ld) is opening the boomgate!\n", pthread_self());
+                bg->s = 'R';
+                pthread_mutex_lock(&bg->m);
+                // wait for the gate is opened for 10ms to change status to open
+                printf("ENTRANCE(# %ld) is raising the boomgate!\n", pthread_self());
+                usleep(10 * 1000);
+                bg->s = 'O';
+                // after fully opened, wait for 20 ms
+                usleep(20 * 1000);
+                bg->s = 'L';
+                // wait for the gate is closed for 10ms to change status to closed
+                printf("ENTRANCE(# %ld) is lowering the boomgate!\n", pthread_self());
+                usleep(10 * 1000);
+                bg->s = 'C';
+                pthread_mutex_unlock(&bg->m);
             }
-            // signal the lpr to read the another one
-            pthread_mutex_unlock(&lpr->m);
         }
+        pthread_mutex_unlock(&lpr->m);
+        // }
+    }
+}
+
+// control exits
+void *control_exit(void *arg) {
+    struct exit *ex = arg;
+    LPR_t *lpr = &ex->lpr;
+    boomgate_t *bg = &ex->bg;
+
+    printf("EXITS(# %ld) CREATED!\n", pthread_self());
+    for (;;) {
+        // if the lpr doesnt have something to read
+        // if (lpr->license[0] == '\0') {
+        //     sleep(10);
+        //     printf("IT DOESNT EXISTS YET!\n");
+        // } else {
+        // if the lpr has something to read signal the lpr to read
+        // wait for 2 ms to start reading
+        usleep(2 * 1000);
+        printf("EXIT(# %ld) IS READING!\n", pthread_self());
+        pthread_cond_signal(&lpr->c);
+        pthread_mutex_lock(&lpr->m);
+        // it can only be started if there is a signal
+        pthread_cond_wait(&lpr->c, &lpr->m);
+        printf("EXIT(# %ld) wants this car to be exited\n", pthread_self());
+        // signalling the boomgate to open;
+        pthread_cond_signal(&bg->c);
+        // opening the boomgate
+        if (bg->s == 'C') {
+            pthread_mutex_lock(&bg->m);
+            pthread_cond_wait(&bg->c, &bg->m);
+            printf("ENTRANCE(# %ld) is opening the boomgate!\n", pthread_self());
+            bg->s = 'R';
+            pthread_mutex_lock(&bg->m);
+            // wait for the gate is opened for 10ms to change status to open
+            printf("ENTRANCE(# %ld) is raising the boomgate!\n", pthread_self());
+            usleep(10 * 1000);
+            bg->s = 'O';
+            // after fully opened, wait for 20 ms
+            usleep(20 * 1000);
+            bg->s = 'L';
+            // wait for the gate is closed for 10ms to change status to closed
+            printf("ENTRANCE(# %ld) is lowering the boomgate!\n", pthread_self());
+            usleep(10 * 1000);
+            bg->s = 'C';
+            pthread_mutex_unlock(&bg->m);
+        }
+
+        pthread_mutex_unlock(&lpr->m);
+        // }
     }
 }
 
@@ -319,9 +373,10 @@ int main() {
     // printf("%p\n", ptr);
 
     // create structure pthreads
-    bgthreads = malloc(sizeof(pthread_t) * (ENTRANCES + EXITS));
-    lprthreads = malloc(sizeof(pthread_t) * (ENTRANCES + EXITS));
+    // bgthreads = malloc(sizeof(pthread_t) * (ENTRANCES + EXITS));
+    // lprthreads = malloc(sizeof(pthread_t) * (ENTRANCES + EXITS));
     enthreads = malloc(sizeof(pthread_t) * ENTRANCES);
+    exthreads = malloc(sizeof(pthread_t) * EXITS);
     // make sure the pthread mutex is sharable by creating attr
     pthread_mutexattr_init(&m_shared);
     pthread_mutexattr_setpshared(&m_shared, PTHREAD_PROCESS_SHARED);
@@ -331,14 +386,46 @@ int main() {
     // printf("hello\n");
     // printf("%zu\n", sizeof(en_t));
 
-    // create 5 entrances
-    for (int i = 0; i < ENTRANCES; i++) {
+    // // create 5 entrances
+    // for (int i = 0; i < ENTRANCES; i++) {
+    //     // address for entrance and store it in *en
+    //     int addr = i * sizeof(en_t);
+    //     en_t *en = ptr + addr;
+    //     LPR_t *lpr = &en->lpr;        // address of the lpr
+    //     boomgate_t *bg = &en->bg;     // adress of the bg
+    //     info_sign_t *ist = &en->ist;  // address of the ist
+
+    //     // printf("en->lpr: %p\n", lpr);
+    //     // printf("en->bg: %p\n", bg);
+
+    //     // mutexes and cond for lpr
+    //     pthread_mutex_init(&lpr->m, &m_shared);
+    //     pthread_cond_init(&lpr->c, &c_shared);
+
+    //     // mutexes and cond for bg
+    //     pthread_mutex_init(&bg->m, &m_shared);
+    //     pthread_cond_init(&bg->c, &c_shared);
+    //     // by default, status is C
+    //     bg->s = 'C';
+
+    //     // mutexes and cond for info sign
+    //     pthread_mutex_init(&ist->m, &m_shared);
+    //     pthread_cond_init(&ist->c, &c_shared);
+
+    //     // create 5 threads for the entrance
+    //     pthread_create(enthreads + i, NULL, control_entrance, en);
+    //     sleep(1);
+    // }
+
+    // creat 5 exits
+    for (int i = 0; i < EXITS; i++) {
         // address for entrance and store it in *en
-        int addr = i * sizeof(en_t);
-        en_t *en = ptr + addr;
-        LPR_t *lpr = &en->lpr;        // address of the lpr
-        boomgate_t *bg = &en->bg;     // adress of the bg
-        info_sign_t *ist = &en->ist;  // address of the ist
+        int addr = i * sizeof(exit_t) + 1440;
+        en_t *ex = ptr + addr;
+        LPR_t *lpr = &ex->lpr;     // address of the lpr
+        boomgate_t *bg = &ex->bg;  // adress of the bg
+
+        printf("%d\n", addr);
 
         // printf("en->lpr: %p\n", lpr);
         // printf("en->bg: %p\n", bg);
@@ -353,66 +440,10 @@ int main() {
         // by default, status is C
         bg->s = 'C';
 
-        // mutexes and cond for info sign
-        pthread_mutex_init(&ist->m, &m_shared);
-        pthread_cond_init(&ist->c, &c_shared);
-
         // create 5 threads for the entrance
-        pthread_create(enthreads + i, NULL, control_entrance, en);
+        pthread_create(exthreads + i, NULL, control_exit, ex);
         sleep(1);
     }
-
-    // //create 5 entrances lpr threads
-    // for (int i = 0; i < ENTRANCES; i++) {
-    //     //address for lpr and store it in *lpr
-    //     int addr = 288 * i;
-    //     LPR_t *lpr = ptr + addr;
-    //     // printf("from lpr: %d\n", addr + 96);
-    //     printf("lpr: %p\n", lpr);
-    //     // printf("%p\n", (pthread_cond_t *)(ptr + 96));
-    //     // printf("%zu\n", sizeof(LPR_t));
-    //     // printf("%p\n", (((void *)lpr) + 96));
-    //     //iniialize mutexes and condition variable of each boomgates
-    //     pthread_mutex_init(&lpr->m, &m_shared);
-    //     pthread_cond_init(&lpr->c, &c_shared);
-    //     //create 5 threads for the boomgate
-    //     pthread_create(lprthreads + i, NULL, checklicense, lpr);
-    //     // sleep(1);
-    // }
-
-    // //create 5 entrances bg threads
-    // for (int i = 0; i < ENTRANCES; i++) {
-    //     //address for boomgates and store it in bg
-    //     int addr = 288 * i + 96;
-    //     boomgate_t *bg = ptr + addr;
-    //     // printf("from bg: %d\n", addr);
-    //     // printf("%p\n", (LPR_t *)(ptr + addr));
-    //     printf("bg: %p\n", bg);
-
-    //     //iniialize mutexes and condition variable of each boomgates
-    //     pthread_mutex_init(&bg->m, &m_shared);
-    //     pthread_cond_init(&bg->c, &c_shared);
-    //     //by default, status is C
-    //     bg->s = 'C';
-    //     //create 5 threads for the boomgate
-    //     pthread_create(bgthreads + i, NULL, controlboomgate, bg);
-    //     // sleep(1);
-    // }
-    // //create 5 exits bg threads
-    // for (int i = 0; i < EXITS; i++) {
-    //     //address for boomgates and store it in bg
-    //     int addr = 192 * i + 1536;
-    //     boomgate_t *bg = ptr + addr;
-    //     //iniialize mutexes and condition variable of each boomgates
-    //     pthread_mutex_init(&bg->m, &m_shared);
-    //     pthread_cond_init(&bg->c, &c_shared);
-    //     //by default, status is C
-    //     bg->s = 'C';
-    //     //create 5 threads for the boomgate
-    //     pthread_create(bgthreads + i, NULL, controlboomgate, bg);
-    //     sleep(1);
-    // }
-    // printf("%zu\n", sizeof(pthread_t) * LEVELS);
 
     *(char *)(ptr + 2918) = 1;
     // wait until the manager change the process of then we can stop the manager
