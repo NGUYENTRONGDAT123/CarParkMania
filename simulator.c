@@ -117,6 +117,8 @@ int main(int argc, char **argv) {
     // get the address and save it in the pointer
     ptr = (void *)mmap(0, SHARE_SIZE, PROT_WRITE | PROT_READ, MAP_SHARED, shm_fd, 0);
 
+    pthread_cond_signal((pthread_cond_t *)((void *)ptr) + 40);
+
     // random 100 cars
     car_t *cars[100];
     srand(time(NULL));
@@ -124,9 +126,6 @@ int main(int argc, char **argv) {
         cars[i] = random_cars();
         // printf("%s\n", cars[i]->license);
     }
-
-    
-
 
     return 0;
 }

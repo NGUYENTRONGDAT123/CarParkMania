@@ -467,29 +467,29 @@ void *control_en_ist(void *arg) {
         pthread_mutex_lock(&ist->m);
         // wait for the signal to start
         pthread_cond_wait(&ist->c, &ist->m);
-        printf("IM SIGNALED!");
+        printf("IST IS SIGNALED!\n");
         // read the status of the bg
         boomgate_t *bg = (boomgate_t *)(((void *)ist) - 96);
         // if the bg still closes, meaning is car is blacklist
         if (bg->s == 'C') {
             ist->s = 'X';
         }
-        // // if the bg opens for the car
-        // else if (bg->s == 'O') {
-        //     // initially assign that it is full
-        //     ist->s = 'F';
-        //     // if level has capacity then update status
-        //     for (int i = 0; i < 5; i++) {
-        //         if (capacity[i] < MAX_CAPACITY) {
-        //             // update the status
-        //             ist->s = i + 49;
-        //             capacity[i]++;
-        //             // signal the level lpr to read
-        //             pthread_cond_signal((pthread_cond_t *)(ptr + i * sizeof(lv_t) + 2400));
-        //             break;
-        //         }
-        //     }
-        // }
+        // if the bg opens for the car
+        else if (bg->s == 'O') {
+            // // initially assign that it is full
+            // ist->s = 'F';
+            // // if level has capacity then update status
+            // for (int i = 0; i < 5; i++) {
+            //     if (capacity[i] < MAX_CAPACITY) {
+            //         // update the status
+            //         ist->s = i + 49;
+            //         capacity[i]++;
+            //         // signal the level lpr to read
+            //         pthread_cond_signal((pthread_cond_t *)(ptr + i * sizeof(lv_t) + 2400));
+            //         break;
+            //     }
+            // }
+        }
 
         // unlock the mutex
         pthread_mutex_unlock(&ist->m);
@@ -566,9 +566,10 @@ int main() {
         pthread_cond_init(&ex_lpr->c, &c_shared);
         pthread_cond_init(&lv_lpr->c, &c_shared);
 
+        printf("\nCREATING LPR\n");
         // create 5 threads for the entrance, exits and level
         pthread_create(en_lpr_threads + i, NULL, control_en_lpr, en_lpr);
-        pthread_create(testing_thread, NULL, testing, en_lpr);
+        // pthread_create(testing_thread, NULL, testing, en_lpr);
         pthread_create(ex_lpr_threads + i, NULL, control_ex_lpr, ex_lpr);
         pthread_create(lv_lpr_threads + i, NULL, control_lv_lpr, lv_lpr);
         // sleep(1);
@@ -594,6 +595,8 @@ int main() {
         en_bg->s = 'C';
         ex_bg->s = 'C';
 
+        printf("\nCREATING BG\n");
+
         // create 5 threads for the entrance and exits
         pthread_create(ex_bg_threads + i, NULL, control_en_bg, en_bg);
         pthread_create(en_bg_threads + i, NULL, control_ex_bg, ex_bg);
@@ -610,14 +613,16 @@ int main() {
         pthread_mutex_init(&ist->m, &m_shared);
         pthread_cond_init(&ist->c, &c_shared);
 
+        printf("\nCREATING IST\n");
+
         // create 5 threads for the entrance
         pthread_create(en_ist_threads + i, NULL, control_en_ist, ist);
         // sleep(1);
     }
 
-    *(char *)(ptr + 2918) = 1;
+    *(char *)(ptr + 2919) = 1;
     // wait until the manager change the process of then we can stop the manager
-    while ((*(char *)(ptr + 2918)) != 0)
+    while ((*(char *)(ptr + 2919)) != 0)
         ;
 
     // destroy the segment
