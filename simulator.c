@@ -95,8 +95,8 @@ typedef struct boomgate {
 
 // struct for information sign
 typedef struct info_sign {
-    pthread_mutex_t *m;
-    pthread_cond_t *c;
+    pthread_mutex_t m;
+    pthread_cond_t c;
     char s;
 } info_sign_t;
 
@@ -104,7 +104,7 @@ typedef struct entrance {
     LPR_t lpr;
     boomgate_t bg;
     info_sign_t ist;
-} entrance_t;
+} en_t;
 
 typedef struct exit {
     LPR_t lpr;
@@ -171,6 +171,33 @@ car_t *random_cars() {
     return car;
 }
 
+void trigger_en_lpr(car_t car) {
+    //get info on car
+    int floor = car.entrance_id;
+    struct LPR *lpr = ptr + (sizeof(en_t) * floor);
+    
+    //lock mutex
+    pthread_mutex_lock(&lpr->m);
+
+
+    printf("ENTRANCE %d LPR TRIGGERED!\n", floor);
+    //signal to start reading
+    //pthread_cond_signal((pthread_cond_t *)((void *)ptr) + 40 + (floor * sizeof(en_t)));
+    pthread_cond_signal(&lpr->c);
+    strcpy(lpr->license, car.license);
+   
+    
+    // unlock the mutex
+    pthread_mutex_unlock(&lpr->m);
+}
+
+//Called to handle lvl lpr input
+void read_lvl_lpr(void *arg) {
+    //this function is ca
+
+}
+
+
 int main(int argc, char **argv) {
     // get the shared objects
     shm_fd = shm_open(SHARE_NAME, O_CREAT | O_RDWR, S_IRWXU);
@@ -179,15 +206,26 @@ int main(int argc, char **argv) {
     // get the address and save it in the pointer
     ptr = (void *)mmap(0, SHARE_SIZE, PROT_WRITE | PROT_READ, MAP_SHARED, shm_fd, 0);
 
-    pthread_cond_signal((pthread_cond_t *)((void *)ptr) + 40);
+    //pthread_cond_signal((pthread_cond_t *)((void *)ptr) + 40);
+
+    //printf("Size of en: %ld", sizeof(en_t));
 
     // random 100 cars
     car_t *cars[100];
     srand(time(NULL));
     for (int i = 0; i < 100; i++) {
+        //usleep(1000 * rand() % (int)(5));
         cars[i] = random_cars();
-        // printf("%s\n", cars[i]->license);
+        printf("%s\n", cars[i]->license);
+
+        //2ms wait at front of queue
+        usleep(5000);
+
+        //trigger lpr
+        trigger_en_lpr(*cars[i]);
+        
     }
 
+    
     return 0;
 }

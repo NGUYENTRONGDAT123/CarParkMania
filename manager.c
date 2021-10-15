@@ -290,6 +290,7 @@ void htab_destroy(htab_t *h) {
 }
 /* ----------Hash tables from Prac 3 --------------*/
 
+
 // global variables
 
 // for segment
@@ -367,9 +368,9 @@ void *testing(void *arg) {
     printf("TESTED THREAD CREATED\n");
     strcpy(lpr->license, "029MZH");
     for (;;) {
-        sleep(5);
+        usleep(10000);
         pthread_cond_signal(&lpr->c);
-        sleep(5);
+        usleep(10000);
         strcpy(lpr->license, "030DWF");
     }
 }
@@ -383,6 +384,7 @@ void *control_en_lpr(void *arg) {
         pthread_mutex_lock(&lpr->m);
         // wait for the signal to start reading
         pthread_cond_wait(&lpr->c, &lpr->m);
+
         // check the if license is whitelist
         if (htab_find(&h, lpr->license) != NULL) {
             printf("%s can be parked!\n", lpr->license);
@@ -395,7 +397,7 @@ void *control_en_lpr(void *arg) {
             // signal that the boomgate to open
             pthread_cond_signal((pthread_cond_t *)(((void *)lpr) + 136));
         } else {
-            printf("%s can not be parked!", lpr->license);
+            printf("%s can not be parked!\n", lpr->license);
             // signal that the ist should show in the X
             pthread_cond_signal((pthread_cond_t *)(((void *)lpr) + 232));
         }
@@ -605,7 +607,7 @@ int main() {
     // printf("level size: %zu\n", sizeof(lv_t));
 
     // create 5 entrance, exit and level lpr
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 5; i++) {
         // address for entrance, exits and levels; and store it in *en
         int en_addr = i * sizeof(en_t);
         int ex_addr = i * sizeof(exit_t) + 1440;
@@ -627,14 +629,14 @@ int main() {
         printf("\nCREATING LPR\n");
         // create 5 threads for the entrance, exits and level
         pthread_create(en_lpr_threads + i, NULL, control_en_lpr, en_lpr);
-        // pthread_create(testing_thread, NULL, testing, en_lpr);
+        //pthread_create(testing_thread, NULL, testing, en_lpr);
         pthread_create(ex_lpr_threads + i, NULL, control_ex_lpr, ex_lpr);
         pthread_create(lv_lpr_threads + i, NULL, control_lv_lpr, lv_lpr);
         // sleep(1);
     }
 
     // create 5 entrances and exits boomgates
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 5; i++) {
         // address for entrance, exits and levels; and store it in *en
         int en_addr = i * sizeof(en_t) + 96;
         int ex_addr = i * sizeof(exit_t) + 1536;
@@ -662,7 +664,7 @@ int main() {
     }
 
     // create 5 entrances ist
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 5; i++) {
         // address for entrance, exits and levels; and store it in *en
         int en_addr = i * sizeof(en_t) + 192;
         info_sign_t *ist = ptr + en_addr;
