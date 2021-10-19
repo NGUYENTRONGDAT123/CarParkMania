@@ -1,0 +1,65 @@
+TIMINGS
+
+    use usleep() or nanosleep() for high resolution delays
+
+    Create a function that sleeps for a certain number of milliseconds, 
+    then apply multiplier to debug
+
+    use pthreads for simultaneous timings
+
+
+SHARED MEMORY
+
+    The three processes communicate via a shared memory segment name PARKING
+
+    PARKING is 2920 bytes in size
+
+    The Simulator needs to create this segment when it is first started 
+    (the segment may already exist from a  previous run, in which case the 
+    simulator creates it again, overwriting the old one. The manager and 
+    fire alarm system both open the existing PARKING segment when they are 
+    started (and will print an error message and exit if not present).). 
+
+    The segment contains space for 5 parking lot entrances, 5 exits and 5 levels. 
+
+    INTER-PROCESS COMMUNICATION
+        See page 7 of the brief
+
+    STRUCTURE
+        See page 8 of the brief
+
+UNUSUAL BEHAVIOUR OF VEHICLES
+    
+    The car park keeps track of both the number of vehicles assigned to each level
+    and the level that each vehicle is currently assigned to.
+
+    When a vehicle is directed by the digital sign to a level, that vehicle will be 
+    assigned to that level. Hence if two vehicles arrive, one after another, they 
+    will not both be directed to a level that only has space for one more vehicle
+
+    However, if the vehicle is detected moving into another level, by one of the per-level
+    LPRs, it will then be counted as being assigned to that level if there is room on that level
+    That is, if a vehicle was directed towards level 1, it would initially count towards level 1's 
+    capacity. However if that vehicle is spotted by level 2's LPR, if level 2 has room for it, it 
+    will be subtracted from level 1's capacity and added to level 2's
+
+
+STATUS DISPLAY
+    When the manager program is run, the terminal it is run in should display a (text mode) screen
+    showing the current status of the car park. The exact layout and formatting is up to you, but
+    the folliwing information is expected to be present:
+
+        Current state of each LPR, boom gate and digital sign
+
+        Current state of each temperature sensor
+        
+        Number of vehicles and maximum capacity on each level
+
+        Total billing revenue recorded by the manager this formatting
+
+        The display should updated frequently (e.g. every 50ms)
+
+        To prevent visual fatigue from scrolling text, all the above information should be able to fit 
+        into a single screen. In addition, before printing out the current status, the screen should 
+        be cleared (e.g. with system("clear")), again, to prevent scrolling
+

@@ -1,3 +1,51 @@
+/*
+OVERVIEW
+    Monitor the status of temperature sensors on each car park level
+
+    When a fire is detected, activate alarms on every car park level, 
+    open all boom gates and display a an evacuation message on the information signs
+
+TIMINGS
+    The fire alarm system will collect temperature readings every 2ms for the purpose of
+    determining if a fire has occurred
+
+    Once the fire alarm system is active, the character 'E' will be displayed on every digital 
+    sign in the parking lot. 20ms later, the will show 'V', then 'A', 'C', 'U', 'A', 'T', 'E', ' ',
+    then looping back to the first E again 
+
+GENERAL
+    Current temperature is returned as a signed 16-bit integer
+
+    Due to noise and faults, the temperature sensor must smooth the data its receiving:
+        For each temperature sensor, the monitor will store the temperature value read from
+        that sensor every 2ms. Out of the 5 most recent temp readings, the median temp will be 
+        recorded as the 'smoothed' reading for that sensor e.g.
+
+            Raw     32   30   30   29   30   40   36   32   31   29   28
+            Smooth  N/A  N/A  N/A  N/A  30   30   30   32   32   32   31
+
+        The 30 most recent smoothed temps are then analysed (before 30 smoothed readings - 
+        34 total readings - the fire alarm system cannot use that sensor).
+
+
+    FIRE DETECTION
+    The system uses two approaches to determine the presence of a fire. If either of these
+    approaches detects a fire, the alarm is triggered
+
+        Fixed temperature fire detection
+            Out of the 30 most recent smoothed temps produced. if 90% of them are 58 degrees 
+            or higher, the temp is considered high enough that there must be a fire
+
+        Rate-of-rise fire detection
+            Out of the 30 most recent smoothed temps produced, if the most recent temp is 
+            8 degrees (or more) hotter than the 30th most recent temp, the temp is considered
+            to be growing at a fast enough rate that there must be a afire.
+
+        For testing and demonstration purposes, your simulator should have the ability to 
+        account for both of these scenarios, to ensure that both successfully trigger the alarm
+
+*/
+
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
