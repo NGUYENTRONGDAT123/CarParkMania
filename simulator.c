@@ -160,8 +160,8 @@ car_t *random_cars(bool flag) {
     car->exit_id = rand() % (int)(5);
 
     // random parking time (100 - 100000ms)
-    car->parking_time = ((int)100 + (rand() % (int)(9901))) * 1000;
-
+    //car->parking_time = ((int)100 + (rand() % (int)(9901))) * 1000;
+    car->parking_time = 50000;
     return car;
 }
 
@@ -186,12 +186,18 @@ void trigger_en_lpr(car_t car) {
 void *simulate_car_handler(void *arg) {
     car_t *car = arg;
     LPR_t *lv_lpr = ptr + 0 * sizeof(lv_t) + 2400;
+    LPR_t *ex_lpr = ptr + (sizeof(exit_t) * 1);
+    //printf("car initialised \n");
     // sleep(1);
     // wait for the car to finish parking
     usleep(car->parking_time);
+    //printf("Car has died\n");
     strcpy(lv_lpr->license, car->license);
     // signal the lv lpr that the car want to exit
     pthread_cond_signal(&lv_lpr->c);
+
+    //signal ex_lpr to leave
+    pthread_cond_signal(&ex_lpr->c);
 
     // remove the car from simulation
     free(car);
@@ -201,6 +207,7 @@ void *generate_car_handler(void *arg) {
     bool flag = true;
     // do forever
     for (;;) {
+
         // create a car
         car_t *car = random_cars(flag);
         // assign cars to the entrance
@@ -222,14 +229,14 @@ void *generate_car_handler(void *arg) {
         info_sign_t *ist = ptr + (sizeof(en_t) * floor) + 192;
         // pthread_cond_init(&ist->c, NULL);
         pthread_cond_wait(&ist->c, &lpr->m);
-        printf("I HAVE BEEN SIGNALED!\n");
+        //printf("I HAVE BEEN SIGNALED!\n");
         if (ist->s == 'X' || ist->s == 'F') {
             printf("this car cannot be parked! %d\n", ist->s);
             // this car is removed
             free(car);
             flag = !flag;
         } else {
-            printf("this car can be parked on level %d! \n", ist->s);
+            printf("this car can be parked on level %c\n", ist->s);
             pthread_t exit_car;
             car_t *accepted_car;
 
@@ -237,13 +244,14 @@ void *generate_car_handler(void *arg) {
             strcpy(accepted_car->license, car->license);
             accepted_car->parking_time = car->parking_time;
             accepted_car->lv = ist->s;
+            accepted_car->exit_id = car->exit_id;
             pthread_create(&(exit_car), NULL, simulate_car_handler, accepted_car);
             free(car);
             flag = !flag;
         }
         pthread_mutex_unlock(&lpr->m);
         usleep(2 * 1000);
-        sleep(1);
+        //sleep(1);
     }
 }
 
@@ -320,7 +328,7 @@ int main(int argc, char **argv) {
 
     // create 1 threads for simulating the car
 
-    sleep(10);
+    sleep(5);
     *(char *)(ptr + 2919) = 0;
 
     free(simulate_car);

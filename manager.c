@@ -432,34 +432,70 @@ void *testing(void *arg) {
 // control the entrance lpr
 void *control_en_lpr(void *arg) {
     struct LPR *lpr = arg;
+
+    boomgate_t *bg = (boomgate_t *)(((void *)lpr) + 96);
+    info_sign_t *ist = (info_sign_t *)(((void *)lpr) + 192);
+    printf("Address of c: %p\n", bg);
+    printf("Address of b: %p\n", ist);
+    
+    
+    
     printf("ENTRANCE LPR CREATED!\n");
     for (;;) {
+
         // lock mutex
         pthread_mutex_lock(&lpr->m);
         // wait for the signal to start reading
         pthread_cond_wait(&lpr->c, &lpr->m);
 
+
         // check the if license is whitelist
         if (htab_find(&h, lpr->license) != NULL) {
             printf("%s can be parked!\n", lpr->license);
 
-            // add the licenese to the h_lv and add the current time for billings
+            //Set IST to let car in
+            pthread_mutex_lock(&ist->m);
+            ist->s = '1';
+            pthread_mutex_unlock(&ist->m);
+            printf("Test 1\n");
+            //check boomgate
+            pthread_mutex_lock(&bg->m);
+            
+            if (bg->s != 'O'){
+                //activate boomgate
+                pthread_cond_signal(&bg->c);
+                printf("Test 2\n");
+                //wait for boomgate to open
+                pthread_cond_wait(&bg->c2, &bg->m);
+                
+            }
+            pthread_mutex_unlock(&bg->m);
+            
+
+            //send signal for simulator to check IST
+            pthread_cond_signal(&ist->c);
+            printf("Done en_lpr\n");
+
+            // add the licenese to the h_lv and add the current time for billing
             item_t *found_car = htab_find(&h, lpr->license);
             struct timeval start_time;
             gettimeofday(&start_time, 0);
             htab_add_billing(&h_billing, found_car->key, start_time);
 
+                        printf("Done en_lpr\n");
+
             // htab_print(&h_billing);
             // htab_delete(&h_billing, found_car->key);
             // htab_print(&h);
             // htab_print(&h_billing);
-
             // signal that the boomgate to open
-            pthread_cond_signal((pthread_cond_t *)(((void *)lpr) + 136));
+            //pthread_cond_signal((pthread_cond_t *)(((void *)lpr) + 136));
         } else {
             printf("%s can not be parked!\n", lpr->license);
+            ist->s = 'X';
+            pthread_cond_signal(&ist->c);
             // signal that the ist should show in the X
-            pthread_cond_signal((pthread_cond_t *)(((void *)lpr) + 232));
+            //pthread_cond_signal((pthread_cond_t *)(((void *)lpr) + 232));
         }
         // unlock the mutex
         pthread_mutex_unlock(&lpr->m);
@@ -474,6 +510,7 @@ void billing(item_t *found_car) {
     FILE *fptr;
     // billing.txt
     fptr = fopen("billing.txt", "a");
+    printf("Billing open\n");
     // get the car in h_billing
     item_t *billing_car = htab_find(&h_billing, found_car->key);
     // get the time that the cars' license was read which is stored in value
@@ -487,12 +524,12 @@ void billing(item_t *found_car) {
     // printf("end time: %ld\n", current);
 
     // printf("the time is %fms\n", floor((float)(current.tv_sec - start_time.tv_sec) * 1000.0f + (current.tv_usec - start_time.tv_usec) / 1000.0f));
-
+    
     // bill
     float bill = (floor((float)(current.tv_sec - start_time.tv_sec) * 1000.0f + (current.tv_usec - start_time.tv_usec) / 1000.0f)) * 0.05;
 
     // printf("the bill is $%.2f\n", bill);
-
+    printf("Billing for %s processed as $%.2f\n", found_car->key, bill);
     // writing the license and the bill
     fprintf(fptr, "%s $%.2f\n", found_car->key, bill);
 
@@ -518,6 +555,7 @@ void *control_ex_lpr(void *arg) {
             printf("%s can be exited!\n", lpr->license);
 
             item_t *found_car = htab_find(&h, lpr->license);
+            printf("call bill for %s", found_car->key);
             billing(found_car);
             // delete the car in h_billing after calculate the bills
             htab_delete(&h_billing, lpr->license);
@@ -593,27 +631,38 @@ void *control_lv_lpr(void *arg) {
 // control the entrance bg
 void *control_en_bg(void *arg) {
     struct boomgate *bg = arg;
+	printf("Address of c: %p\n", bg);
     printf("ENTRANCE BOOMGATE CREATED!\n");
+    pthread_mutex_lock(&bg->m);
+    char test = 'C';
+    strcpy(&bg->s, &test);
+    pthread_mutex_unlock(&bg->m);
+
     for (;;) {
         // lock mutex
         pthread_mutex_lock(&bg->m);
         // wait for the signal to start opening
+        printf("TEST1 %c\n\n", bg->s);
         pthread_cond_wait(&bg->c, &bg->m);
-
+        printf("TEST2 %c \n\n", bg->s);
+        printf("in bg1\n");
         // if there is emergency
         if (bg->s == 'R') {
+            printf("in R\n");
         }
         // opening the boomgate
-        else if (bg->s == 'C') {
+        else if (bg->s != 'C') {
             printf("ENTRANCE(# %ld) is opening the boomgate!\n", pthread_self());
             bg->s = 'R';
+            usleep(10 * 1000);
             // wait for the gate is opened for 10ms to change status to open
             printf("ENTRANCE(# %ld) is raising the boomgate!\n", pthread_self());
-            usleep(10 * 1000);
             bg->s = 'O';
             // signal the ist to assign the level for cars
-            pthread_cond_signal((pthread_cond_t *)(((void *)bg) + 136));
+            //pthread_cond_signal((pthread_cond_t *)(((void *)bg) + 136));
             // after fully opened, wait for 20 ms
+            pthread_cond_signal(&bg->c2);
+
             usleep(20 * 1000);
             bg->s = 'L';
             // wait for the gate is closed for 10ms to change status to closed
@@ -621,6 +670,8 @@ void *control_en_bg(void *arg) {
             usleep(10 * 1000);
             bg->s = 'C';
         }
+        printf("in bg3\n");
+
         // unlock the mutex
         pthread_mutex_unlock(&bg->m);
     }
@@ -663,6 +714,7 @@ void *control_ex_bg(void *arg) {
 // control entrance ist
 void *control_en_ist(void *arg) {
     struct info_sign *ist = arg;
+    printf("Address of b: %p\n", ist);
     printf("ENTRANCE IST CREATED!\n");
 
     for (;;) {
@@ -671,13 +723,20 @@ void *control_en_ist(void *arg) {
         // wait for the signal to start
         pthread_cond_wait(&ist->c, &ist->m);
 
+        printf("IST: %c\n", ist->s);
+
         int i = 0;
 
+        /*
         // read the status of the bg
         boomgate_t *bg = (boomgate_t *)(((void *)ist) - 96);
         // if the bg still closes, meaning is car is blacklist
         if (bg->s == 'C') {
             ist->s = 'X';
+            pthread_cond_signal(&ist->c);
+
+            // unlock the mutex
+            pthread_mutex_unlock(&ist->m);
         }
         // if the bg opens for the car
         else if (bg->s == 'O') {
@@ -709,12 +768,12 @@ void *control_en_ist(void *arg) {
                 }
             }
             if (i == 5) {
+                ist->s = 'F';
                 pthread_cond_signal(&ist->c);
                 // unlock the mutex
                 pthread_mutex_unlock(&ist->m);
-                ist->s = 'F';
             }
-        }
+        }*/
     }
 }
 
@@ -797,6 +856,7 @@ int main() {
         pthread_mutex_init(&en_lpr->m, &m_shared);
         pthread_mutex_init(&ex_lpr->m, &m_shared);
         pthread_mutex_init(&lv_lpr->m, &m_shared);
+
 
         pthread_cond_init(&en_lpr->c, &c_shared);
         pthread_cond_init(&ex_lpr->c, &c_shared);

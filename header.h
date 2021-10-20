@@ -19,6 +19,7 @@ typedef struct LPR {
 typedef struct boomgate {
     pthread_mutex_t m;
     pthread_cond_t c;
+    pthread_cond_t c2;
     char s;
 } boomgate_t;
 
@@ -26,6 +27,7 @@ typedef struct boomgate {
 typedef struct info_sign {
     pthread_mutex_t m;
     pthread_cond_t c;
+    pthread_cond_t c2;
     char s;
 } info_sign_t;
 
