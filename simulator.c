@@ -213,6 +213,8 @@ void *generate_car_handler(void *arg) {
         strcpy(lpr->license, car->license);
         // unlock the mutex2
         pthread_mutex_unlock(&lpr->m);
+        // wait 2ms for the lpr entrance to read
+        usleep(2 * 1000);
         // signal the lpr entrance to read
         pthread_cond_signal(&lpr->c);
 
@@ -220,16 +222,16 @@ void *generate_car_handler(void *arg) {
         // usleep(10 * 1000);
         // get the ist info
         info_sign_t *ist = ptr + (sizeof(en_t) * floor) + 192;
+        boomgate_t *bg = ptr + (sizeof(en_t) * floor) + 96;
         // pthread_cond_init(&ist->c, NULL);
         pthread_cond_wait(&ist->c, &lpr->m);
-        printf("I HAVE BEEN SIGNALED!\n");
         if (ist->s == 'X' || ist->s == 'F') {
             printf("this car cannot be parked! %d\n", ist->s);
             // this car is removed
             free(car);
             flag = !flag;
         } else {
-            printf("this car can be parked on level %d! \n", ist->s);
+            printf("this car can be parked on level %c! \n", ist->s);
             pthread_t exit_car;
             car_t *accepted_car;
 
@@ -237,13 +239,22 @@ void *generate_car_handler(void *arg) {
             strcpy(accepted_car->license, car->license);
             accepted_car->parking_time = car->parking_time;
             accepted_car->lv = ist->s;
+            // wait for the gate to open
+
+            pthread_cond_wait(&bg->c, &lpr->m);
+            // take 10ms for car to park in the car park
+            // usleep(10 * 1000);
+            // thread for car to be exited
             pthread_create(&(exit_car), NULL, simulate_car_handler, accepted_car);
             free(car);
             flag = !flag;
+            // wait for the gate to close
+            pthread_cond_wait(&bg->c, &lpr->m);
+            // usleep(20)
         }
         pthread_mutex_unlock(&lpr->m);
-        usleep(2 * 1000);
-        sleep(1);
+
+        // sleep(1);
     }
 }
 
@@ -320,7 +331,7 @@ int main(int argc, char **argv) {
 
     // create 1 threads for simulating the car
 
-    sleep(10);
+    sleep(100);
     *(char *)(ptr + 2919) = 0;
 
     free(simulate_car);

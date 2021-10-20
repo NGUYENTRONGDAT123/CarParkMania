@@ -582,9 +582,9 @@ void *control_lv_lpr(void *arg) {
             // delete the car in h_lv
             htab_delete(&h_lv, lpr->license);
             printf("CAR HAS BEEN EXITED!\n");
+            strcpy((char *)(ptr + 1528), lpr->license);
             // unlock the mutex
             pthread_mutex_unlock(&lpr->m);
-            strcpy((char *)(ptr + 1528), lpr->license);
             pthread_cond_signal((pthread_cond_t *)(ptr + 1480));
         }
     }
@@ -609,10 +609,13 @@ void *control_en_bg(void *arg) {
             bg->s = 'R';
             // wait for the gate is opened for 10ms to change status to open
             printf("ENTRANCE(# %ld) is raising the boomgate!\n", pthread_self());
+
             usleep(10 * 1000);
             bg->s = 'O';
             // signal the ist to assign the level for cars
             pthread_cond_signal((pthread_cond_t *)(((void *)bg) + 136));
+            pthread_cond_signal(&bg->c);
+
             // after fully opened, wait for 20 ms
             usleep(20 * 1000);
             bg->s = 'L';
@@ -620,6 +623,7 @@ void *control_en_bg(void *arg) {
             printf("ENTRANCE(# %ld) is lowering the boomgate!\n", pthread_self());
             usleep(10 * 1000);
             bg->s = 'C';
+            pthread_cond_signal(&bg->c);
         }
         // unlock the mutex
         pthread_mutex_unlock(&bg->m);
@@ -677,7 +681,11 @@ void *control_en_ist(void *arg) {
         boomgate_t *bg = (boomgate_t *)(((void *)ist) - 96);
         // if the bg still closes, meaning is car is blacklist
         if (bg->s == 'C') {
-            ist->s = 'X';
+            ist->s = 88;  // X
+            pthread_cond_signal(&ist->c);
+            // unlock the mutex
+            pthread_mutex_unlock(&ist->m);
+
         }
         // if the bg opens for the car
         else if (bg->s == 'O') {
@@ -697,23 +705,25 @@ void *control_en_ist(void *arg) {
                     strcpy((char *)(ptr + 2488), en_lpr->license);
 
                     printf("IST HAS ASSIGNED LV #%d\n", i + 1);
-                    pthread_cond_signal(&ist->c);
+
                     // unlock the mutex
                     pthread_mutex_unlock(&ist->m);
 
                     // signal the lv lpr
                     pthread_cond_signal((pthread_cond_t *)(ptr + 2440));
-
+                    pthread_cond_signal(&ist->c);
                     // setting the operation back
                     break;
                 }
             }
             if (i == 5) {
-                pthread_cond_signal(&ist->c);
+                ist->s = 70;  // F
                 // unlock the mutex
                 pthread_mutex_unlock(&ist->m);
-                ist->s = 'F';
+                pthread_cond_signal(&ist->c);
             }
+        } else {
+            pthread_mutex_unlock(&ist->m);
         }
     }
 }
