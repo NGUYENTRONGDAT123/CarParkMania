@@ -52,3 +52,12 @@ typedef enum operation {
     op_enter,
     op_exit
 } operation_t;
+
+// car
+typedef struct car {
+    char license[6];
+    int entrance_id;
+    int exit_id;
+    int parking_time;
+    char lv;
+} car_t;

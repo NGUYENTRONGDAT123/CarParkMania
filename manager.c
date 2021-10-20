@@ -361,7 +361,7 @@ bool store_plates() {
     htab_destroy(&h);
 
     // buckets
-    size_t buckets = 5;
+    size_t buckets = 100;
     int h_key = 0;
     FILE *f = fopen("plates.txt", "r");
 
@@ -519,6 +519,8 @@ void *control_ex_lpr(void *arg) {
 
             item_t *found_car = htab_find(&h, lpr->license);
             billing(found_car);
+            // delete the car in h_billing after calculate the bills
+            htab_delete(&h_billing, lpr->license);
             // signal that the boomgate to open
             pthread_cond_signal((pthread_cond_t *)(((void *)lpr) + 136));
         } else {
@@ -572,15 +574,19 @@ void *control_lv_lpr(void *arg) {
 
             // reassign the operation to quit
             op[index] = op_exit;
+            // unlock the mutex
+            pthread_mutex_unlock(&lpr->m);
         }
         // else if the car wants to leave signaled by the simulator
         else if (op[index] == op_exit) {
+            // delete the car in h_lv
             htab_delete(&h_lv, lpr->license);
             printf("CAR HAS BEEN EXITED!\n");
+            // unlock the mutex
+            pthread_mutex_unlock(&lpr->m);
+            strcpy((char *)(ptr + 1528), lpr->license);
+            pthread_cond_signal((pthread_cond_t *)(ptr + 1480));
         }
-
-        // unlock the mutex
-        pthread_mutex_unlock(&lpr->m);
     }
 }
 
@@ -614,9 +620,6 @@ void *control_en_bg(void *arg) {
             printf("ENTRANCE(# %ld) is lowering the boomgate!\n", pthread_self());
             usleep(10 * 1000);
             bg->s = 'C';
-        } else {
-            // signal the ist to display "X"
-            pthread_cond_signal((pthread_cond_t *)(((void *)bg) + 136));
         }
         // unlock the mutex
         pthread_mutex_unlock(&bg->m);
@@ -691,22 +694,27 @@ void *control_en_ist(void *arg) {
                     // parse the license plate to the lv lpr
                     LPR_t *en_lpr = (LPR_t *)(((void *)ist) - 192);
                     LPR_t *lv_lpr = ptr + i * sizeof(lv_t) + 2400;
-                    strcpy(lv_lpr->license, en_lpr->license);
+                    strcpy((char *)(ptr + 2488), en_lpr->license);
 
                     printf("IST HAS ASSIGNED LV #%d\n", i + 1);
-                    pthread_cond_signal(&lv_lpr->c);
+                    pthread_cond_signal(&ist->c);
+                    // unlock the mutex
+                    pthread_mutex_unlock(&ist->m);
+
+                    // signal the lv lpr
+                    pthread_cond_signal((pthread_cond_t *)(ptr + 2440));
 
                     // setting the operation back
                     break;
                 }
             }
             if (i == 5) {
+                pthread_cond_signal(&ist->c);
+                // unlock the mutex
+                pthread_mutex_unlock(&ist->m);
                 ist->s = 'F';
             }
         }
-
-        // unlock the mutex
-        pthread_mutex_unlock(&ist->m);
     }
 }
 
@@ -763,7 +771,7 @@ int main() {
     lv_lpr1 = ptr + 2400;  // this variable is important for get_lv()
 
     // create 5 entrance, exit and level lpr
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 1; i++) {
         // address for entrance, exits and levels; and store it in *en
         int en_addr = i * sizeof(en_t);
         int ex_addr = i * sizeof(exit_t) + 1440;
@@ -813,7 +821,6 @@ int main() {
 
         // create 5 threads for the entrance, exits and level
         pthread_create(en_lpr_threads + i, NULL, control_en_lpr, en_lpr);
-        pthread_create(testing_thread, NULL, testing, en_lpr);
         pthread_create(ex_lpr_threads + i, NULL, control_ex_lpr, ex_lpr);
         pthread_create(lv_lpr_threads + i, NULL, control_lv_lpr, lv_lpr);
 
@@ -823,7 +830,9 @@ int main() {
 
         // create 5 threads for the entrance
         pthread_create(en_ist_threads + i, NULL, control_en_ist, ist);
-        sleep(1);
+
+        // testing
+        // pthread_create(testing_thread, NULL, testing, en_lpr);
     }
 
     *(char *)(ptr + 2919) = 1;
