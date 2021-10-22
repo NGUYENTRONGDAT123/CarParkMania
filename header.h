@@ -1,6 +1,5 @@
 #include <pthread.h>
 
-
 #define SHARE_NAME "PARKING"
 #define SHARE_SIZE 2920
 #define LEVELS 5
@@ -47,17 +46,9 @@ typedef struct level {
     char sign;
 } lv_t;
 
-// supported operation
-typedef enum operation {
-    op_enter,
-    op_exit
-} operation_t;
-
-// car
 typedef struct car {
     char license[6];
-    int entrance_id;
     int exit_id;
-    int parking_time;
     char lv;
+    struct car *next;
 } car_t;

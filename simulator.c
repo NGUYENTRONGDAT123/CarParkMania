@@ -77,16 +77,17 @@ MEMORY
 
 #define SHARE_NAME "PARKING"
 #define SHARE_SIZE 2920
-#define ENTRANCES 5
-#define EXITS 5
-#define LEVELS 5
+/* number of threads used to service requests */
+#define NUM_HANDLER_THREADS 10
 
 // global variables
 int shm_fd;
 void *ptr;
 
+int generate_id;
 int thread_id;
 
+pthread_t *generate_car;
 pthread_t *simulate_car;
 
 const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -97,6 +98,14 @@ char *license_plate[100];
 // attributes for mutex and cond
 pthread_mutexattr_t m_shared;
 pthread_condattr_t c_shared;
+
+pthread_mutex_t mutex_car;
+pthread_cond_t cond_car;
+
+car_t *cars = NULL;     /* head of linked list of requests. */
+car_t *last_car = NULL; /* pointer to last request.         */
+
+int num_car = 0;
 
 // initalize hash tables for storing plates from txt
 bool store_plates() {
@@ -137,64 +146,132 @@ char *rand_string_alloc(size_t size) {
     return s;
 }
 
-car_t *random_cars(bool flag) {
+char *random_cars(bool flag) {
     // create car
-    car_t *car = malloc(sizeof(car_t));
+    char *rand_license = malloc(sizeof(char[6]));
     // random license
     // if flag false, create a random license plate
     if (flag == false) {
         char *license = rand_string_alloc(6);
-        strcpy(car->license, license);
+        strcpy(rand_license, license);
     }
     // if true, get the license plate that is allowed
     else {
         int i = rand() % 100;
         char *license = license_plate[i];
-        strcpy(car->license, license);
+        strcpy(rand_license, license);
     }
-    // random entrance id (1-5)
-    // car->entrance_id = rand() % (int)(5);
-    car->entrance_id = 0;
 
-    // random exit id (1-5)
-    car->exit_id = rand() % (int)(5);
-
-    // random parking time (100 - 100000ms)
-    car->parking_time = ((int)100 + (rand() % (int)(9901))) * 1000;
-
-    return car;
+    return rand_license;
 }
 
-void trigger_en_lpr(car_t car) {
-    // get info on car
-    int floor = car.entrance_id;
-    struct LPR *lpr = ptr + (sizeof(en_t) * floor);
+void add_car(char license[6], int exit_id, char lv,
+             pthread_mutex_t *p_mutex,
+             pthread_cond_t *p_cond_var) {
+    car_t *a_car; /* pointer to newly added request.     */
 
-    // lock mutex
-    pthread_mutex_lock(&lpr->m);
+    /* create structure with new request */
+    a_car = (struct car *)malloc(sizeof(struct car));
+    if (!a_car) { /* malloc failed?? */
+        fprintf(stderr, "add_car: out of memory\n");
+        exit(1);
+    }
 
-    printf("ENTRANCE %d LPR TRIGGERED!\n", floor);
-    // signal to start reading
-    // pthread_cond_signal((pthread_cond_t *)((void *)ptr) + 40 + (floor * sizeof(en_t)));
-    pthread_cond_signal(&lpr->c);
-    strcpy(lpr->license, car.license);
+    strcpy(a_car->license, license);
+    a_car->exit_id = exit_id;
+    a_car->lv = lv;
 
-    // unlock the mutex
-    pthread_mutex_unlock(&lpr->m);
+    /* lock the mutex, to assure exclusive access to the list */
+    pthread_mutex_lock(p_mutex);
+
+    /* add new car to the end of the list, updating list */
+    /* pointers as required */
+    if (num_car == 0) { /* special case - list is empty */
+        cars = a_car;
+        last_car = a_car;
+    } else {
+        last_car->next = a_car;
+        last_car = a_car;
+    }
+
+    /* increase total number of pending cars by one. */
+    num_car++;
+
+    /* unlock mutex */
+    pthread_mutex_unlock(p_mutex);
+
+    /* signal the condition variable - there's a new request to handle */
+    pthread_cond_signal(p_cond_var);
+}
+
+struct car *get_car() {
+    struct car *a_car; /* pointer to car.                 */
+
+    if (num_car > 0) {
+        a_car = cars;
+        cars = a_car->next;
+        if (cars == NULL) { /* this was the last car on the list */
+            last_car = NULL;
+        }
+        /* decrease the total number of pending cars */
+        num_car--;
+    } else { /* cars list is empty */
+        a_car = NULL;
+    }
+
+    /* return the car to the caller. */
+    return a_car;
+}
+
+void handle_a_car(car_t *car) {
+    int lv_addr = ((car->lv - 49) * sizeof(lv_t)) + 2400;
+    LPR_t *lv_lpr = ptr + lv_addr;
+
+    // take 10 ms to get to the lv
+    usleep(10 * 1000);
+
+    // signal the lv lpr for the second time to leave
+    strcpy(lv_lpr->license, car->license);
+    // signal the lv lpr for the first time to enter
+    pthread_cond_signal(&lv_lpr->c);
+
+    // park there for random time
+    int rd_time = (100 + (rand() % (900))) * 1000;
+    printf("%d\n", rd_time);
+    usleep(rd_time);
+
+    // signal the lv lpr for the second time to leave
+    strcpy(lv_lpr->license, car->license);
+    pthread_cond_signal(&lv_lpr->c);
+
+    // signal the lpr at the exit to leave
+    // the car is at the exit
+    int ex_addr = (car->exit_id * sizeof(exit_t)) + 1440;
+    LPR_t *ex_lpr = ptr + ex_addr;
+    strcpy(ex_lpr->license, car->license);
+    pthread_cond_signal(&ex_lpr->c);
 }
 
 void *simulate_car_handler(void *arg) {
-    car_t *car = arg;
-    LPR_t *lv_lpr = ptr + 0 * sizeof(lv_t) + 2400;
-    // sleep(1);
-    // wait for the car to finish parking
-    usleep(car->parking_time);
-    strcpy(lv_lpr->license, car->license);
-    // signal the lv lpr that the car want to exit
-    pthread_cond_signal(&lv_lpr->c);
+    car_t *a_car;
 
-    // remove the car from simulation
-    free(car);
+    pthread_mutex_lock(&mutex_car);
+
+    // do forever
+    for (;;) {
+        if (num_car > 0) {
+            a_car = get_car();
+            if (a_car) {
+                pthread_mutex_unlock(&mutex_car);
+                handle_a_car(a_car);
+                free(a_car);
+                pthread_mutex_lock(&mutex_car);
+            }
+        } else {
+            // wait for cars
+            pthread_cond_wait(&cond_car, &mutex_car);
+        }
+    }
 }
 
 void *generate_car_handler(void *arg) {
@@ -202,68 +279,87 @@ void *generate_car_handler(void *arg) {
     // do forever
     for (;;) {
         // create a car
-        car_t *car = random_cars(flag);
+        char *rand_license = random_cars(flag);
         // assign cars to the entrance
-        int floor = car->entrance_id;
+        int floor = rand() % (int)(5);
+        // int floor = 0;
+        int exit_id = rand() % (int)(5);
+        // int exit_id = 0;
         struct LPR *lpr = ptr + (sizeof(en_t) * floor);
         // lock the mutex
         pthread_mutex_lock(&lpr->m);
-        printf("ENTRANCE %d LPR TRIGGERED!\n", floor + 1);
+        printf("#%s is at the entrance %d\n", rand_license, floor + 1);
         // the car is at the entrance
-        strcpy(lpr->license, car->license);
-        // unlock the mutex2
-        pthread_mutex_unlock(&lpr->m);
+        strcpy(lpr->license, rand_license);
         // wait 2ms for the lpr entrance to read
         usleep(2 * 1000);
         // signal the lpr entrance to read
         pthread_cond_signal(&lpr->c);
 
-        pthread_mutex_lock(&lpr->m);
-        // usleep(10 * 1000);
-        // get the ist info
-        info_sign_t *ist = ptr + (sizeof(en_t) * floor) + 192;
-        boomgate_t *bg = ptr + (sizeof(en_t) * floor) + 96;
-        // pthread_cond_init(&ist->c, NULL);
-        pthread_cond_wait(&ist->c, &lpr->m);
-        if (ist->s == 'X' || ist->s == 'F') {
-            printf("this car cannot be parked! %d\n", ist->s);
-            // this car is removed
-            free(car);
-            flag = !flag;
-        } else {
-            printf("this car can be parked on level %c! \n", ist->s);
-            pthread_t exit_car;
-            car_t *accepted_car;
-
-            accepted_car = malloc(sizeof(car_t));
-            strcpy(accepted_car->license, car->license);
-            accepted_car->parking_time = car->parking_time;
-            accepted_car->lv = ist->s;
-            // wait for the gate to open
-
-            pthread_cond_wait(&bg->c, &lpr->m);
-            // take 10ms for car to park in the car park
-            // usleep(10 * 1000);
-            // thread for car to be exited
-            pthread_create(&(exit_car), NULL, simulate_car_handler, accepted_car);
-            free(car);
-            flag = !flag;
-            // wait for the gate to close
-            pthread_cond_wait(&bg->c, &lpr->m);
-            // usleep(20)
-        }
         pthread_mutex_unlock(&lpr->m);
 
+        info_sign_t *ist = ptr + (sizeof(en_t) * floor) + 192;
+        boomgate_t *bg = ptr + (sizeof(en_t) * floor) + 96;
+
+        pthread_mutex_lock(&ist->m);
+        // wait for the ist
+        pthread_cond_wait(&ist->c, &ist->m);
+        if (ist->s == 'X') {
+            printf("ist says: %c\n", ist->s);
+            // this car is removed
+            free(rand_license);
+            flag = !flag;
+            pthread_mutex_unlock(&ist->m);
+
+        } else if (ist->s == 'F') {
+            printf("ist says: %c\n", ist->s);
+            // this car is removed
+            free(rand_license);
+            flag = !flag;
+            pthread_mutex_unlock(&ist->m);
+
+        } else {
+            printf("this car can be parked on level %c! \n", ist->s);
+            pthread_mutex_unlock(&ist->m);
+
+            pthread_mutex_lock(&bg->m);
+            printf("Entrance %d is raising the boomgate!\n", floor + 1);
+            // raising for 10 ms
+            bg->s = 'R';
+            usleep(10 * 1000);
+            pthread_cond_signal(&bg->c);
+
+            // wait for the manager tells to close
+            pthread_cond_wait(&bg->c, &bg->m);
+
+            // lowering for 10 ms
+            printf("Entrance %d is lowering the boomgate!\n", floor + 1);
+            bg->s = 'L';
+            usleep(10 * 1000);
+            // signal finish lowering
+            pthread_cond_signal(&bg->c);
+
+            // wait for the gate to fully close
+            pthread_cond_wait(&bg->c, &bg->m);
+            add_car(rand_license, exit_id, ist->s, &mutex_car, &cond_car);
+
+            // this car is removed
+            free(rand_license);
+            flag = !flag;
+
+            pthread_mutex_unlock(&bg->m);
+        }
+
         // sleep(1);
+        usleep((rand() % 100) * 1000);
     }
 }
 
-// Called to handle lvl lpr input
-void read_lvl_lpr(void *arg) {
-    // this function is ca
-}
-
 int main(int argc, char **argv) {
+    // delete the segment if exists
+    if (shm_fd > 0) {
+        shm_unlink(SHARE_NAME);
+    }
     // get the shared objects
     shm_fd = shm_open(SHARE_NAME, O_CREAT | O_RDWR, S_IRWXU);
     // set the size
@@ -281,59 +377,87 @@ int main(int argc, char **argv) {
     pthread_condattr_init(&c_shared);
     pthread_condattr_setpshared(&c_shared, PTHREAD_PROCESS_SHARED);
 
-    simulate_car = malloc(sizeof(pthread_t) * 1);
-    thread_id = 1;
-    // // initializes mutexes and conditions
-    // for (int i = 0; i < 1; i++) {
-    //     // address for entrance, exits and levels; and store it in *en
-    //     int en_addr = i * sizeof(en_t);
-    //     int ex_addr = i * sizeof(exit_t) + 1440;
-    //     int lv_addr = i * sizeof(lv_t) + 2400;
+    // initialize mutexes and condition variables
+    pthread_mutex_init(&mutex_car, &m_shared);
+    pthread_cond_init(&cond_car, &c_shared);
 
-    //     // lpr
-    //     LPR_t *en_lpr = ptr + en_addr;
-    //     LPR_t *ex_lpr = ptr + ex_addr;
-    //     LPR_t *lv_lpr = ptr + lv_addr;
+    // create 5 entrance, exit and level lpr
+    for (int i = 0; i < 5; i++) {
+        // address for entrance, exits and levels; and store it in *en
+        int en_addr = i * sizeof(en_t);
+        int ex_addr = i * sizeof(exit_t) + 1440;
+        int lv_addr = i * sizeof(lv_t) + 2400;
 
-    //     // boomgate
-    //     boomgate_t *en_bg = ptr + en_addr + 96;
-    //     boomgate_t *ex_bg = ptr + ex_addr + 136;
+        // lpr
+        LPR_t *en_lpr = ptr + en_addr;
+        LPR_t *ex_lpr = ptr + ex_addr;
+        LPR_t *lv_lpr = ptr + lv_addr;
 
-    //     // ist
-    //     info_sign_t *ist = ptr + en_addr + 192;
+        // boomgate
+        boomgate_t *en_bg = ptr + en_addr + 96;
+        boomgate_t *ex_bg = ptr + ex_addr + 136;
 
-    //     // int a = get_lv(lv_lpr);
-    //     // printf("%d\n", a);
+        // ist
+        info_sign_t *ist = ptr + en_addr + 192;
+        // mutexes and cond for lpr
+        pthread_mutex_init(&en_lpr->m, &m_shared);
+        pthread_mutex_init(&ex_lpr->m, &m_shared);
+        pthread_mutex_init(&lv_lpr->m, &m_shared);
 
-    //     // printf("%ld\n", ((long int)lv_lpr - (long int)lv_lpr1) / sizeof(lv_t));
-    //     // mutexes and cond for lpr
-    //     pthread_mutex_init(&en_lpr->m, &m_shared);
-    //     pthread_mutex_init(&ex_lpr->m, &m_shared);
-    //     pthread_mutex_init(&lv_lpr->m, &m_shared);
+        pthread_cond_init(&en_lpr->c, &c_shared);
+        pthread_cond_init(&ex_lpr->c, &c_shared);
+        pthread_cond_init(&lv_lpr->c, &c_shared);
 
-    //     pthread_cond_init(&en_lpr->c, &c_shared);
-    //     pthread_cond_init(&ex_lpr->c, &c_shared);
-    //     pthread_cond_init(&lv_lpr->c, &c_shared);
+        // mutexes and cond for bg
+        pthread_mutex_init(&en_bg->m, &m_shared);
+        pthread_mutex_init(&ex_bg->m, &m_shared);
 
-    //     // mutexes and cond for bg
-    //     pthread_mutex_init(&en_bg->m, &m_shared);
-    //     pthread_mutex_init(&ex_bg->m, &m_shared);
+        pthread_cond_init(&en_bg->c, &c_shared);
+        pthread_cond_init(&ex_bg->c, &c_shared);
 
-    //     pthread_cond_init(&en_bg->c, &c_shared);
-    //     pthread_cond_init(&ex_bg->c, &c_shared);
+        // mutexes and cond for ist
+        pthread_mutex_init(&ist->m, &m_shared);
+        pthread_cond_init(&ist->c, &c_shared);
+    }
 
-    //     // mutexes and cond for ist
-    //     pthread_mutex_init(&ist->m, &m_shared);
-    //     pthread_cond_init(&ist->c, &c_shared);
+    *(char *)(ptr + 2919) = 1;
 
-    pthread_create(simulate_car, NULL, generate_car_handler, (void *)&thread_id);
+    // wait until the manager change the process of then we can stop the manager
+    while ((*(char *)(ptr + 2919)) == 1) {
+    };
+
+    generate_car = malloc(sizeof(pthread_t) * 1);
+    simulate_car = malloc(sizeof(pthread_t) * NUM_HANDLER_THREADS);
+
+    generate_id = 1;
+
+    pthread_create(generate_car, NULL, generate_car_handler, (void *)&generate_id);
     // }
 
+    thread_id = 1;
     // create 1 threads for simulating the car
+    for (int i = 0; i < NUM_HANDLER_THREADS; i++) {
+        pthread_create(simulate_car, NULL, simulate_car_handler, (void *)&thread_id);
+        thread_id++;
+    }
 
-    sleep(100);
-    *(char *)(ptr + 2919) = 0;
+    sleep(20);
+    *(char *)(ptr + 2919) = 1;
 
+    // destroy the segment
+    if (munmap(ptr, SHARE_SIZE) != 0) {
+        perror("munmap() failed");
+    }
+    if (shm_unlink(SHARE_NAME) != 0) {
+        perror("shm_unlink() failed");
+    }
+
+    free(generate_car);
     free(simulate_car);
+
+    // destroy mutex and cond attributes
+    pthread_mutexattr_destroy(&m_shared);
+    pthread_condattr_destroy(&c_shared);
+
     return 0;
 }

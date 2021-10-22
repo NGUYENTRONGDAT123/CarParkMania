@@ -71,249 +71,7 @@ BILLING
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "header.h"
-
-/* ----------Hash tables from Prac 3 --------------*/
-// Inroduction to hash tables in C
-
-// An item inserted into a hash table.
-// As hash collisions can occur, multiple items can exist in one bucket.
-// Therefore, each bucket is a linked list of items that hashes to that bucket.
-typedef struct item item_t;
-struct item {
-    char *key;
-    long value;
-    struct timeval start_time;
-    item_t *next;
-};
-
-void item_print(item_t *i) {
-    printf("key=%s value=%ld", i->key, i->value);
-}
-
-// A hash table mapping a string to an integer.
-typedef struct htab htab_t;
-struct htab {
-    item_t **buckets;
-    size_t size;
-};
-
-// Initialise a new hash table with n buckets.
-// pre: true
-// post: (return == false AND allocation of table failed)
-//       OR (all buckets are null pointers)
-bool htab_init(htab_t *h, size_t n) {
-    h->size = n;
-    h->buckets = (item_t **)calloc(n, sizeof(item_t *));
-    return h->buckets != 0;
-}
-
-// The Bernstein hash function.
-// A very fast hash function that works well in practice.
-size_t djb_hash(char *s) {
-    size_t hash = 5381;
-    int c;
-    while ((c = *s++) != '\0') {
-        // hash = hash * 33 + c
-        hash = ((hash << 5) + hash) + c;
-    }
-    return hash;
-}
-
-// Calculate the offset for the bucket for key in hash table.
-size_t htab_index(htab_t *h, char *key) {
-    return djb_hash(key) % h->size;
-}
-
-size_t test_index(char *key) {
-    return djb_hash(key) % 127;
-}
-
-// Find pointer to head of list for key in hash table.
-item_t *htab_bucket(htab_t *h, char *key) {
-    return h->buckets[htab_index(h, key)];
-}
-
-// Find an item for key in hash table.
-// pre: true
-// post: (return == NULL AND item not found)
-//       OR (strcmp(return->key, key) == 0)
-item_t *htab_find(htab_t *h, char *key) {
-    for (item_t *i = htab_bucket(h, key); i != NULL; i = i->next) {
-        if (strcmp(i->key, key) == 0) {  // found the key
-            return i;
-        }
-    }
-    return NULL;
-}
-
-// Add a key with value to the hash table.
-// pre: htab_find(h, key) == NULL
-// post: (return == false AND allocation of new item failed)
-//       OR (htab_find(h, key) != NULL)
-bool htab_add(htab_t *h, char *key, long value) {
-    item_t *
-        newhead = (item_t *)malloc(sizeof(item_t));
-    if (newhead == NULL) {
-        return false;
-    }
-    newhead->key = key;
-    newhead->value = value;
-
-    // hash key and place item in appropriate bucket
-    size_t bucket = htab_index(h, key);
-    // newhead->next = h->buckets[bucket];
-    // h->buckets[bucket] = newhead;
-
-    // add it to the last of linked list
-    if (h->buckets[bucket] == NULL) {
-        h->buckets[bucket] = newhead;
-    } else {
-        item_t *last = h->buckets[bucket];
-        while (last->next != NULL) {
-            last = last->next;
-        }
-
-        // add the new value to the last
-        last->next = newhead;
-    }
-    return true;
-}
-
-// hash table add but only for cars
-bool htab_add_car(htab_t *h, char *key, size_t lv) {
-    item_t *
-        newhead = (item_t *)malloc(sizeof(item_t));
-    if (newhead == NULL) {
-        return false;
-    }
-    newhead->key = key;
-
-    // add it to the last of linked list
-    if (h->buckets[lv] == NULL) {
-        h->buckets[lv] = newhead;
-    } else {
-        item_t *last = h->buckets[lv];
-        while (last->next != NULL) {
-            last = last->next;
-        }
-
-        // add the new value to the last
-        last->next = newhead;
-    }
-    return true;
-}
-
-// hash table only for cars with the time when entrance lpr started to read its license
-bool htab_add_billing(htab_t *h, char *key, struct timeval start_time) {
-    item_t *
-        newhead = (item_t *)malloc(sizeof(item_t));
-    if (newhead == NULL) {
-        return false;
-    }
-    newhead->key = key;
-    newhead->start_time = start_time;
-
-    // hash key and place item in appropriate bucket
-    size_t bucket = htab_index(h, key);
-    // newhead->next = h->buckets[bucket];
-    // h->buckets[bucket] = newhead;
-
-    // add it to the last of linked list
-    if (h->buckets[bucket] == NULL) {
-        h->buckets[bucket] = newhead;
-    } else {
-        item_t *last = h->buckets[bucket];
-        while (last->next != NULL) {
-            last = last->next;
-        }
-
-        // add the new value to the last
-        last->next = newhead;
-    }
-    return true;
-}
-
-// check how many value stored in the buckets
-int len_bucket(htab_t *h, size_t bucket) {
-    item_t *tmp = h->buckets[bucket];
-    int counter = 0;
-
-    while (tmp != NULL) {
-        counter += 1;
-        tmp = tmp->next;
-    }
-
-    printf("This bucket has: %d values\n", counter);
-    return counter;
-}
-
-// Print the hash table.
-// pre: true
-// post: hash table is printed to screen
-void htab_print(htab_t *h) {
-    printf("hash table with %ld buckets\n", h->size);
-    for (size_t i = 0; i < h->size; ++i) {
-        printf("bucket %ld: \n", i);
-        if (h->buckets[i] == NULL) {
-            printf("empty\n");
-        } else {
-            for (item_t *j = h->buckets[i]; j != NULL; j = j->next) {
-                item_print(j);
-                // struct timeval time = j->start_time;
-                // printf("start time: %ld\n", time.tv_usec);
-                if (j->next != NULL) {
-                    printf(" -> ");
-                }
-            }
-            printf("\n");
-        }
-    }
-}
-
-// Delete an item with key from the hash table.
-// pre: htab_find(h, key) != NULL
-// post: htab_find(h, key) == NULL
-void htab_delete(htab_t *h, char *key) {
-    item_t *head = htab_bucket(h, key);
-    item_t *current = head;
-    item_t *previous = NULL;
-    while (current != NULL) {
-        if (strcmp(current->key, key) == 0) {
-            if (previous == NULL) {  // first item in list
-                h->buckets[htab_index(h, key)] = current->next;
-            } else {
-                previous->next = current->next;
-            }
-            free(current);
-            break;
-        }
-        previous = current;
-        current = current->next;
-    }
-}
-
-// Destroy an initialised hash table.
-// pre: htab_init(h)
-// post: all memory for hash table is released
-void htab_destroy(htab_t *h) {
-    // free linked lists
-    for (size_t i = 0; i < h->size; ++i) {
-        item_t *bucket = h->buckets[i];
-        while (bucket != NULL) {
-            item_t *next = bucket->next;
-            free(bucket);
-            bucket = next;
-        }
-    }
-
-    // free buckets array
-    free(h->buckets);
-    h->buckets = NULL;
-    h->size = 0;
-}
-/* ----------Hash tables from Prac 3 --------------*/
-
+#include "hashtable.c"
 // global variables
 
 // for segment
@@ -321,17 +79,14 @@ int shm_fd;
 void *ptr;
 
 // threads for entrance
-pthread_t *en_lpr_threads;
-pthread_t *en_bg_threads;
-pthread_t *en_ist_threads;
+pthread_t *entrance_threads;
 pthread_t *testing_thread;
 
 // threads for level
 pthread_t *lv_lpr_threads;
 
 // threads for exit
-pthread_t *ex_lpr_threads;
-pthread_t *ex_bg_threads;
+pthread_t *exit_threads;
 
 // attributes for mutex and cond
 pthread_mutexattr_t m_shared;
@@ -339,22 +94,19 @@ pthread_condattr_t c_shared;
 
 // hash table
 htab_t h;          // for license plates
-htab_t h_billing;  // for levels
-htab_t h_lv;
+htab_t h_billing;  // for billing
+htab_t h_lv;       // for levels
+
+int num_of_cars = 0;
 
 // lpr pointer to save the address
 LPR_t *lv_lpr1;
-LPR_t *lv_lpr2;
-LPR_t *lv_lpr3;
-LPR_t *lv_lpr4;
-LPR_t *lv_lpr5;
-
-// operation to know when to add cars and delete cars
-operation_t op[5] = {op_exit, op_exit, op_exit, op_exit, op_exit};
 
 // global for storing plates in hash tables
 char temp[6];
 char *license_plate[100];
+
+int num_lv[5] = {0, 0, 0, 0, 0};  // this is global variable to store the number of cars on each level
 
 // initalize hash tables for storing plates from txt
 bool store_plates() {
@@ -375,7 +127,7 @@ bool store_plates() {
         // fputs(license_plate, stdout);
         // printf(":%s\n", license_plate);
         temp[strcspn(temp, "\n")] = 0;
-        license_plate[h_key] = malloc(6);
+        license_plate[h_key] = malloc(7);
         strcpy(license_plate[h_key], temp);
         htab_add(&h, license_plate[h_key], h_key);
         h_key++;
@@ -385,16 +137,17 @@ bool store_plates() {
 }
 
 // initialize a hash table for storing license plate of the parked car
-bool create_h_lv() {
+bool create_hash_table() {
     htab_destroy(&h_lv);
+    htab_destroy(&h_billing);
 
     // buckets
-    size_t buckets = 5;  // one for each level
-    if (!htab_init(&h_lv, buckets)) {
+    size_t buckets = 100;  // one for each level
+    if (!htab_init(&h_billing, buckets)) {
         printf("failed to initialise hash table\n");
         return EXIT_FAILURE;
     }
-    if (!htab_init(&h_billing, buckets)) {
+    if (!htab_init(&h_lv, buckets)) {
         printf("failed to initialise hash table\n");
         return EXIT_FAILURE;
     }
@@ -407,62 +160,109 @@ void *testing(void *arg) {
     strcpy(lpr->license, "029MZH");
     strcpy((char *)(ptr + 1528), "029MZH");
     for (;;) {
-        // sleep(1);
-        // usleep(20 * 1000);
+        sleep(1);
+        usleep(20 * 1000);
         pthread_cond_signal(&lpr->c);
         // sleep(1);
-        usleep(165 * 1000);  // 165ms
-        // sleep(1);
-        pthread_cond_signal((pthread_cond_t *)(ptr + 1480));
+        // usleep(165 * 1000);  // 165ms
+        // // sleep(1);
+        // pthread_cond_signal((pthread_cond_t *)(ptr + 2400));
 
-        usleep(20 * 1000);
+        sleep(1);
 
         // second car
         strcpy(lpr->license, "030DWF");
         pthread_cond_signal(&lpr->c);
-        usleep(416 * 1000);  // 416ms
-        strcpy((char *)(ptr + 1528), "030DWF");
-        pthread_cond_signal((pthread_cond_t *)(ptr + 1480));
+        // usleep(416 * 1000);  // 416ms
+        // strcpy((char *)(ptr + 1528), "030DWF");
+        // pthread_cond_signal((pthread_cond_t *)(ptr + 2400));
 
-        // sleep(1);
+        sleep(1);
         break;
     }
 }
 
 // control the entrance lpr
-void *control_en_lpr(void *arg) {
-    struct LPR *lpr = arg;
-    printf("ENTRANCE LPR CREATED!\n");
+void *control_entrance(void *arg) {
+    // struct LPR *lpr = arg;
+    en_t *en = arg;
+    LPR_t *lpr = &en->lpr;
+    boomgate_t *bg = &en->bg;
+    info_sign_t *ist = &en->ist;
+
+    // printf("ENTRANCE CREATED!\n");
     for (;;) {
         // lock mutex
         pthread_mutex_lock(&lpr->m);
         // wait for the signal to start reading
+
         pthread_cond_wait(&lpr->c, &lpr->m);
-
+        item_t *found_car = htab_find(&h, lpr->license);
         // check the if license is whitelist
-        if (htab_find(&h, lpr->license) != NULL) {
+        if (found_car != NULL) {
             printf("%s can be parked!\n", lpr->license);
+            system("clear");
+            // unlock the mutex
+            pthread_mutex_unlock(&lpr->m);
 
-            // add the licenese to the h_lv and add the current time for billings
-            item_t *found_car = htab_find(&h, lpr->license);
-            struct timeval start_time;
-            gettimeofday(&start_time, 0);
-            htab_add_billing(&h_billing, found_car->key, start_time);
+            // controling the ist
+            //  lock mutex
+            pthread_mutex_lock(&ist->m);
+            // check number of cars in the park
+            if (num_of_cars <= 100) {
+                // update the status
+                ist->s = (num_of_cars % 5) + 49;
 
-            // htab_print(&h_billing);
-            // htab_delete(&h_billing, found_car->key);
-            // htab_print(&h);
-            // htab_print(&h_billing);
+                int i = num_of_cars % 5;
 
-            // signal that the boomgate to open
-            pthread_cond_signal((pthread_cond_t *)(((void *)lpr) + 136));
+                printf("ist has assigned lv #%d\n", i + 1);
+
+                struct timeval start_time;
+                gettimeofday(&start_time, 0);
+                // add the car to hash table billing
+                htab_add_billing(&h_billing, found_car->key, start_time);
+
+                num_of_cars++;
+
+                // unlock the mutex of the ist
+                pthread_mutex_unlock(&ist->m);
+                pthread_cond_signal(&ist->c);
+
+                // control the bg
+                //   lock mutex
+                pthread_mutex_lock(&bg->m);
+                // wait for the simulation done raising
+                pthread_cond_wait(&bg->c, &bg->m);
+                printf("done raising\n");
+                // after fully opened, wait for 20 ms
+                usleep(20 * 1000);
+                // signal to lower the gates
+                pthread_cond_signal(&bg->c);
+
+                // wait for the simulation done lowering
+                pthread_cond_wait(&bg->c, &bg->m);
+                bg->s = 'C';
+                // unlock the mutex
+                pthread_mutex_unlock(&bg->m);
+                pthread_cond_signal(&bg->c);
+
+            } else {  // if full
+                ist->s = 'F';
+                // unlock the mutex of the ist
+                pthread_mutex_unlock(&ist->m);
+                pthread_cond_signal(&ist->c);
+            }
         } else {
             printf("%s can not be parked!\n", lpr->license);
-            // signal that the ist should show in the X
-            pthread_cond_signal((pthread_cond_t *)(((void *)lpr) + 232));
+            // unlock the mutex
+            pthread_mutex_unlock(&lpr->m);
+
+            pthread_mutex_lock(&bg->m);
+            ist->s = 'X';
+            // unlock the mutex
+            pthread_mutex_unlock(&bg->m);
+            pthread_cond_signal(&ist->c);
         }
-        // unlock the mutex
-        pthread_mutex_unlock(&lpr->m);
     }
 }
 
@@ -502,9 +302,11 @@ void billing(item_t *found_car) {
 }
 
 // control the exit lpr
-void *control_ex_lpr(void *arg) {
-    struct LPR *lpr = arg;
-    printf("EXIT LPR CREATED!\n");
+void *control_exit(void *arg) {
+    exit_t *ex = arg;
+    LPR_t *lpr = &ex->lpr;
+    boomgate_t *bg = &ex->bg;
+    // printf("EXIT CREATED!\n");
 
     for (;;) {
         // lock mutex
@@ -516,18 +318,38 @@ void *control_ex_lpr(void *arg) {
         // check the if license is whitelist
         if (htab_find(&h, lpr->license) != NULL) {
             printf("%s can be exited!\n", lpr->license);
+            // unlock the mutex
+            pthread_mutex_unlock(&lpr->m);
 
             item_t *found_car = htab_find(&h, lpr->license);
             billing(found_car);
             // delete the car in h_billing after calculate the bills
             htab_delete(&h_billing, lpr->license);
-            // signal that the boomgate to open
-            pthread_cond_signal((pthread_cond_t *)(((void *)lpr) + 136));
+            // control the boomgate
+            // lock mutex
+            pthread_mutex_lock(&bg->m);
+
+            printf("EXIT(# %ld) is opening the boomgate!\n", pthread_self());
+            bg->s = 'R';
+            // wait for the gate is opened for 10ms to change status to open
+            printf("EXIT(# %ld) is raising the boomgate!\n", pthread_self());
+            usleep(10 * 1000);
+            bg->s = 'O';
+            // after fully opened, wait for 20 ms
+            usleep(20 * 1000);
+            bg->s = 'L';
+            // wait for the gate is closed for 10ms to change status to closed
+            printf("EXIT(# %ld) is lowering the boomgate!\n", pthread_self());
+            usleep(10 * 1000);
+            bg->s = 'C';
+
+            // unlock the mutex
+            pthread_mutex_unlock(&bg->m);
         } else {
             printf("%s can not be exited!", lpr->license);
+            // unlock the mutex
+            pthread_mutex_unlock(&lpr->m);
         }
-        // unlock the mutex
-        pthread_mutex_unlock(&lpr->m);
     }
 }
 
@@ -551,7 +373,7 @@ int get_lv_lpr(LPR_t *lv_lpr) {
 // control the level lpr
 void *control_lv_lpr(void *arg) {
     struct LPR *lpr = arg;
-    printf("LEVEL LPR CREATED!\n");
+    // printf("LEVEL CREATED!\n");
     for (;;) {
         // lock mutex
         pthread_mutex_lock(&lpr->m);
@@ -563,167 +385,26 @@ void *control_lv_lpr(void *arg) {
         // get the level of the car park
         int index = get_lv_lpr(lpr);
 
-        // if the ist signal that the car can be parked
-        if (op[index] == op_enter) {
-            // get the car license and store it in the hash table for levels
-            item_t *found_car = htab_find(&h, lpr->license);
-            // park the car in that specific level
-            htab_add_car(&h_lv, found_car->key, index);
-            printf("CAR HAS BEEN PARKED!\n");
-            // htab_print(&h_lv);
+        item_t *found_car = htab_find(&h, lpr->license);
 
-            // reassign the operation to quit
-            op[index] = op_exit;
+        // if the car is not in the car park, add it
+        if (found_car == NULL) {
+            num_lv[index]++;
+            htab_add(&h_lv, lpr->license, 0);
+            printf("CAR HAS BEEN PARKED!\n");
+            // htab_print(&h_billing);
+
             // unlock the mutex
             pthread_mutex_unlock(&lpr->m);
         }
-        // else if the car wants to leave signaled by the simulator
-        else if (op[index] == op_exit) {
+        // else if
+        else {
             // delete the car in h_lv
+            num_lv[index]--;
             htab_delete(&h_lv, lpr->license);
             printf("CAR HAS BEEN EXITED!\n");
-            strcpy((char *)(ptr + 1528), lpr->license);
             // unlock the mutex
             pthread_mutex_unlock(&lpr->m);
-            pthread_cond_signal((pthread_cond_t *)(ptr + 1480));
-        }
-    }
-}
-
-// control the entrance bg
-void *control_en_bg(void *arg) {
-    struct boomgate *bg = arg;
-    printf("ENTRANCE BOOMGATE CREATED!\n");
-    for (;;) {
-        // lock mutex
-        pthread_mutex_lock(&bg->m);
-        // wait for the signal to start opening
-        pthread_cond_wait(&bg->c, &bg->m);
-
-        // if there is emergency
-        if (bg->s == 'R') {
-        }
-        // opening the boomgate
-        else if (bg->s == 'C') {
-            printf("ENTRANCE(# %ld) is opening the boomgate!\n", pthread_self());
-            bg->s = 'R';
-            // wait for the gate is opened for 10ms to change status to open
-            printf("ENTRANCE(# %ld) is raising the boomgate!\n", pthread_self());
-
-            usleep(10 * 1000);
-            bg->s = 'O';
-            // signal the ist to assign the level for cars
-            pthread_cond_signal((pthread_cond_t *)(((void *)bg) + 136));
-            pthread_cond_signal(&bg->c);
-
-            // after fully opened, wait for 20 ms
-            usleep(20 * 1000);
-            bg->s = 'L';
-            // wait for the gate is closed for 10ms to change status to closed
-            printf("ENTRANCE(# %ld) is lowering the boomgate!\n", pthread_self());
-            usleep(10 * 1000);
-            bg->s = 'C';
-            pthread_cond_signal(&bg->c);
-        }
-        // unlock the mutex
-        pthread_mutex_unlock(&bg->m);
-    }
-}
-
-// control the exit bg
-void *control_ex_bg(void *arg) {
-    struct boomgate *bg = arg;
-    printf("EXIT BOOMGATE CREATED!\n");
-    for (;;) {
-        // lock mutex
-        pthread_mutex_lock(&bg->m);
-        // wait for the signal to start opening
-        pthread_cond_wait(&bg->c, &bg->m);
-
-        // if there is emergency
-        if (bg->s == 'R') {
-        }
-        // opening the boomgate
-        else if (bg->s == 'C') {
-            printf("EXIT(# %ld) is opening the boomgate!\n", pthread_self());
-            bg->s = 'R';
-            // wait for the gate is opened for 10ms to change status to open
-            printf("EXIT(# %ld) is raising the boomgate!\n", pthread_self());
-            usleep(10 * 1000);
-            bg->s = 'O';
-            // after fully opened, wait for 20 ms
-            usleep(20 * 1000);
-            bg->s = 'L';
-            // wait for the gate is closed for 10ms to change status to closed
-            printf("EXIT(# %ld) is lowering the boomgate!\n", pthread_self());
-            usleep(10 * 1000);
-            bg->s = 'C';
-        }
-        // unlock the mutex
-        pthread_mutex_unlock(&bg->m);
-    }
-}
-
-// control entrance ist
-void *control_en_ist(void *arg) {
-    struct info_sign *ist = arg;
-    printf("ENTRANCE IST CREATED!\n");
-
-    for (;;) {
-        // lock mutex
-        pthread_mutex_lock(&ist->m);
-        // wait for the signal to start
-        pthread_cond_wait(&ist->c, &ist->m);
-
-        int i = 0;
-
-        // read the status of the bg
-        boomgate_t *bg = (boomgate_t *)(((void *)ist) - 96);
-        // if the bg still closes, meaning is car is blacklist
-        if (bg->s == 'C') {
-            ist->s = 88;  // X
-            pthread_cond_signal(&ist->c);
-            // unlock the mutex
-            pthread_mutex_unlock(&ist->m);
-
-        }
-        // if the bg opens for the car
-        else if (bg->s == 'O') {
-            // initially assign that it is full
-            // if level has capacity then update status
-            while (i < 5) {
-                if (len_bucket(&h_lv, i) < MAX_CAPACITY) {
-                    // update the status
-                    ist->s = i + 49;
-
-                    // update the operation the level lpr
-                    op[i] = op_enter;
-
-                    // parse the license plate to the lv lpr
-                    LPR_t *en_lpr = (LPR_t *)(((void *)ist) - 192);
-                    LPR_t *lv_lpr = ptr + i * sizeof(lv_t) + 2400;
-                    strcpy((char *)(ptr + 2488), en_lpr->license);
-
-                    printf("IST HAS ASSIGNED LV #%d\n", i + 1);
-
-                    // unlock the mutex
-                    pthread_mutex_unlock(&ist->m);
-
-                    // signal the lv lpr
-                    pthread_cond_signal((pthread_cond_t *)(ptr + 2440));
-                    pthread_cond_signal(&ist->c);
-                    // setting the operation back
-                    break;
-                }
-            }
-            if (i == 5) {
-                ist->s = 70;  // F
-                // unlock the mutex
-                pthread_mutex_unlock(&ist->m);
-                pthread_cond_signal(&ist->c);
-            }
-        } else {
-            pthread_mutex_unlock(&ist->m);
         }
     }
 }
@@ -732,20 +413,9 @@ void *control_en_ist(void *arg) {
 int main() {
     // store plates from txt file
     store_plates();
-    // htab_print(&h);
-    // len_bucket(&h, 0);
-
-    // printf("The current time is: %ld\n", time(NULL) * 1000);
 
     // init the hash for storing license plates of the parked car
-    create_h_lv();
-
-    // htab_add("");
-
-    // delete the segment if exists
-    if (shm_fd > 0) {
-        shm_unlink(SHARE_NAME);
-    }
+    create_hash_table();
 
     // create the segment
     shm_fd = shm_open(SHARE_NAME, O_CREAT | O_RDWR, S_IRWXU);
@@ -757,13 +427,10 @@ int main() {
 
     // create structure pthreads
     // create threads for entrances
-    en_lpr_threads = malloc(sizeof(pthread_t) * ENTRANCES);
-    en_bg_threads = malloc(sizeof(pthread_t) * ENTRANCES);
-    en_ist_threads = malloc(sizeof(pthread_t) * ENTRANCES);
+    entrance_threads = malloc(sizeof(pthread_t) * ENTRANCES);
 
     // create threads for exits
-    ex_lpr_threads = malloc(sizeof(pthread_t) * EXITS);
-    ex_bg_threads = malloc(sizeof(pthread_t) * EXITS);
+    exit_threads = malloc(sizeof(pthread_t) * EXITS);
 
     // create threads for levels
     lv_lpr_threads = malloc(sizeof(pthread_t) * LEVELS);
@@ -781,7 +448,7 @@ int main() {
     lv_lpr1 = ptr + 2400;  // this variable is important for get_lv()
 
     // create 5 entrance, exit and level lpr
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 5; i++) {
         // address for entrance, exits and levels; and store it in *en
         int en_addr = i * sizeof(en_t);
         int ex_addr = i * sizeof(exit_t) + 1440;
@@ -799,86 +466,56 @@ int main() {
         // ist
         info_sign_t *ist = ptr + en_addr + 192;
 
-        // int a = get_lv(lv_lpr);
-        // printf("%d\n", a);
-
-        // printf("%ld\n", ((long int)lv_lpr - (long int)lv_lpr1) / sizeof(lv_t));
-        // mutexes and cond for lpr
-        pthread_mutex_init(&en_lpr->m, &m_shared);
-        pthread_mutex_init(&ex_lpr->m, &m_shared);
-        pthread_mutex_init(&lv_lpr->m, &m_shared);
-
-        pthread_cond_init(&en_lpr->c, &c_shared);
-        pthread_cond_init(&ex_lpr->c, &c_shared);
-        pthread_cond_init(&lv_lpr->c, &c_shared);
-
-        // mutexes and cond for bg
-        pthread_mutex_init(&en_bg->m, &m_shared);
-        pthread_mutex_init(&ex_bg->m, &m_shared);
-
-        pthread_cond_init(&en_bg->c, &c_shared);
-        pthread_cond_init(&ex_bg->c, &c_shared);
-
         // bg status' default is C
         en_bg->s = 'C';
         ex_bg->s = 'C';
 
-        // mutexes and cond for bg
-        pthread_mutex_init(&ist->m, &m_shared);
-        pthread_cond_init(&ist->c, &c_shared);
-
         printf("\nCREATING #%d\n", i + 1);
 
-        // create 5 threads for the entrance, exits and level
-        pthread_create(en_lpr_threads + i, NULL, control_en_lpr, en_lpr);
-        pthread_create(ex_lpr_threads + i, NULL, control_ex_lpr, ex_lpr);
+        // entrance pointer
+        en_t *en_ptr = ptr + en_addr;
+        en_ptr->lpr = *en_lpr;
+        en_ptr->bg = *en_bg;
+        en_ptr->ist = *ist;
+
+        // exit pointer
+        exit_t *ex_ptr = ptr + ex_addr;
+        ex_ptr->lpr = *ex_lpr;
+        ex_ptr->bg = *ex_bg;
+
+        // entrance threads
+        pthread_create(entrance_threads + i, NULL, control_entrance, en_ptr);
+
+        // lv threads
         pthread_create(lv_lpr_threads + i, NULL, control_lv_lpr, lv_lpr);
 
-        // create 5 threads for the entrance and exits
-        pthread_create(ex_bg_threads + i, NULL, control_en_bg, en_bg);
-        pthread_create(en_bg_threads + i, NULL, control_ex_bg, ex_bg);
-
-        // create 5 threads for the entrance
-        pthread_create(en_ist_threads + i, NULL, control_en_ist, ist);
-
+        // exits threads
+        pthread_create(exit_threads + i, NULL, control_exit, ex_ptr);
         // testing
         // pthread_create(testing_thread, NULL, testing, en_lpr);
+
+        fflush(stdin);
     }
 
-    *(char *)(ptr + 2919) = 1;
+    *(char *)(ptr + 2919) = 0;
     // wait until the manager change the process of then we can stop the manager
-    while ((*(char *)(ptr + 2919)) != 0)
-        ;
+    while ((*(char *)(ptr + 2919)) == 0) {
+    };
 
-    // destroy the segment
-    if (munmap(ptr, SHARE_SIZE) != 0) {
-        perror("munmap() failed");
-    }
-    if (shm_unlink(SHARE_NAME) != 0) {
-        perror("shm_unlink() failed");
-    }
-
-    // destroy mutex and cond attributes
-    pthread_mutexattr_destroy(&m_shared);
-    pthread_condattr_destroy(&c_shared);
-
-    // free all local variables
-    for (int i = 0; i < 100; i++) {
-        free(license_plate[i]);
-    }
+    // // free all local variables
+    // for (int i = 0; i < 100; i++) {
+    //     free(license_plate[i]);
+    // }
 
     // free threads
-    free(en_lpr_threads);
-    free(en_bg_threads);
-    free(en_ist_threads);
+    free(entrance_threads);
     free(testing_thread);
     free(lv_lpr_threads);
-    free(ex_lpr_threads);
-    free(ex_bg_threads);
+    free(exit_threads);
 
     // destroy hash tables
     htab_destroy(&h);
     htab_destroy(&h_lv);
-    htab_destroy(&h_billing);
+    // htab_destroy(&h_billing);
     return 0;
 }
