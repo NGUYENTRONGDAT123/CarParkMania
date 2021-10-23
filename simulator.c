@@ -613,7 +613,7 @@ int main(int argc, char **argv) {
     pthread_create(generate_car, NULL, generate_car_handler, (void *)&generate_id);
     // }
 
-    sleep(20);
+    sleep(40);
     *(char *)(ptr + 2919) = 1;
 
     // destroy the segment

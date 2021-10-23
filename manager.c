@@ -57,7 +57,9 @@ htab_t h;          // for license plates
 htab_t h_billing;  // for billing
 htab_t h_lv;       // for levels
 
+// tracking numbers
 int total_cars = 0;
+double revenue = 0;
 
 // lpr pointer to save the address
 LPR_t *lv_lpr1;
@@ -291,6 +293,8 @@ void billing(bill_task_t *a_task) {
     t2 = clock();
     double bill = ((double)t2 - car->value) / CLOCKS_PER_SEC * 1000 * 0.05;
 
+    revenue += bill;
+
     // writing the license and the bill
     fprintf(fptr, "%s $%.2f\n", car->key, bill);
 
@@ -438,7 +442,7 @@ void *display(void *arg) {
         // status of each lpr, bg and ist
         pthread_mutex_lock(&mutex_display);
 
-        printf("total cars: %d", total_cars);
+        printf("total cars: %d \t revenue:$%.2f", total_cars, revenue);
         for (int i = 0; i < 5; i++) {
             printf("\n------------------------\n");
             printf("entrance id %d status: lpr:%s \t digital sign: %c \tboomgate: %c\n", i + 1, en_lpr[i]->license, ist[i]->s, en_bg[i]->s);
@@ -480,6 +484,9 @@ int main() {
 
     // testing thread
     testing_thread = malloc(sizeof(pthread_t));
+
+    // 5 threads for billing
+    billing_thread = malloc(sizeof(pthread_t) * 5);
 
     // make sure the pthread mutex is sharable by creating attr
     pthread_mutexattr_init(&m_shared);
@@ -536,13 +543,12 @@ int main() {
         pthread_create(exit_threads + i, NULL, control_exit, ex_ptr);
         // testing
         // pthread_create(testing_thread, NULL, testing, en_lpr);
+
+        pthread_create(billing_thread + i, NULL, handle_billing, NULL);
     }
 
     display_thread = malloc(sizeof(pthread_t));
     pthread_create(display_thread, NULL, display, NULL);
-
-    billing_thread = malloc(sizeof(pthread_t));
-    pthread_create(billing_thread, NULL, handle_billing, NULL);
 
     *(char *)(ptr + 2919) = 0;
     // wait until the manager change the process of then we can stop the manager
