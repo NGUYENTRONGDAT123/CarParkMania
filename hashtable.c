@@ -14,16 +14,9 @@
 // An item inserted into a hash table.
 // As hash collisions can occur, multiple items can exist in one bucket.
 // Therefore, each bucket is a linked list of items that hashes to that bucket.
-typedef struct item item_t;
-struct item {
-    char *key;
-    long value;
-    struct timeval start_time;
-    item_t *next;
-};
 
 void item_print(item_t *i) {
-    printf("key=%s value=%ld", i->key, i->value);
+    printf("key=%s value=%f", i->key, i->value);
 }
 
 // A hash table mapping a string to an integer.
@@ -87,9 +80,42 @@ item_t *htab_find(htab_t *h, char *key) {
 // pre: htab_find(h, key) == NULL
 // post: (return == false AND allocation of new item failed)
 //       OR (htab_find(h, key) != NULL)
-bool htab_add(htab_t *h, char *key, long value) {
-    item_t *
-        newhead = (item_t *)malloc(sizeof(item_t));
+// bool htab_add(htab_t *h, char *key, long value) {
+//     item_t *
+//         newhead = (item_t *)malloc(sizeof(item_t));
+//     if (newhead == NULL) {
+//         return false;
+//     }
+//     newhead->key = key;
+//     newhead->value = value;
+
+//     // hash key and place item in appropriate bucket
+//     size_t bucket = htab_index(h, key);
+//     // newhead->next = h->buckets[bucket];
+//     // h->buckets[bucket] = newhead;
+
+//     // add it to the last of linked list
+//     if (h->buckets[bucket] == NULL) {
+//         h->buckets[bucket] = newhead;
+//     } else {
+//         item_t *last = h->buckets[bucket];
+//         while (last->next != NULL) {
+//             last = last->next;
+//         }
+
+//         // add the new value to the last
+//         last->next = newhead;
+//     }
+//     return true;
+// }
+
+// Add a key with value to the hash table.
+// pre: htab_find(h, key) == NULL
+// post: (return == false AND allocation of new item failed)
+//       OR (htab_find(h, key) != NULL)
+bool htab_add(htab_t *h, char *key, double value) {
+    // allocate new item
+    item_t *newhead = (item_t *)malloc(sizeof(item_t));
     if (newhead == NULL) {
         return false;
     }
@@ -98,75 +124,8 @@ bool htab_add(htab_t *h, char *key, long value) {
 
     // hash key and place item in appropriate bucket
     size_t bucket = htab_index(h, key);
-    // newhead->next = h->buckets[bucket];
-    // h->buckets[bucket] = newhead;
-
-    // add it to the last of linked list
-    if (h->buckets[bucket] == NULL) {
-        h->buckets[bucket] = newhead;
-    } else {
-        item_t *last = h->buckets[bucket];
-        while (last->next != NULL) {
-            last = last->next;
-        }
-
-        // add the new value to the last
-        last->next = newhead;
-    }
-    return true;
-}
-
-// hash table add but only for cars
-bool htab_add_car(htab_t *h, char *key, size_t lv) {
-    item_t *
-        newhead = (item_t *)malloc(sizeof(item_t));
-    if (newhead == NULL) {
-        return false;
-    }
-    newhead->key = key;
-
-    // add it to the last of linked list
-    if (h->buckets[lv] == NULL) {
-        h->buckets[lv] = newhead;
-    } else {
-        item_t *last = h->buckets[lv];
-        while (last->next != NULL) {
-            last = last->next;
-        }
-
-        // add the new value to the last
-        last->next = newhead;
-    }
-    return true;
-}
-
-// hash table only for cars with the time when entrance lpr started to read its license
-bool htab_add_billing(htab_t *h, char *key, struct timeval start_time) {
-    item_t *
-        newhead = (item_t *)malloc(sizeof(item_t));
-    if (newhead == NULL) {
-        return false;
-    }
-    newhead->key = key;
-    newhead->start_time = start_time;
-
-    // hash key and place item in appropriate bucket
-    size_t bucket = htab_index(h, key);
-    // newhead->next = h->buckets[bucket];
-    // h->buckets[bucket] = newhead;
-
-    // add it to the last of linked list
-    if (h->buckets[bucket] == NULL) {
-        h->buckets[bucket] = newhead;
-    } else {
-        item_t *last = h->buckets[bucket];
-        while (last->next != NULL) {
-            last = last->next;
-        }
-
-        // add the new value to the last
-        last->next = newhead;
-    }
+    newhead->next = h->buckets[bucket];
+    h->buckets[bucket] = newhead;
     return true;
 }
 

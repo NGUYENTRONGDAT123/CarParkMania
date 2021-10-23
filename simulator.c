@@ -17,7 +17,7 @@
 #define SHARE_NAME "PARKING"
 #define SHARE_SIZE 2920
 /* number of threads used to service requests */
-#define NUM_HANDLER_THREADS 5
+#define NUM_HANDLER_THREADS 25
 
 // global variables
 // for segment
@@ -53,7 +53,7 @@ int num_car = 0;
 pthread_t *simulate_car;
 
 // for queuing cars at the entrance
-int num_car_entrance[5] = {0, 0, 0, 0, 0};
+int num_car_entrance[5];
 car_t *cars_en[5];
 car_t *last_car_en[5];
 pthread_mutex_t mutex_car_en[5];
@@ -61,7 +61,7 @@ pthread_cond_t cond_car_en[5];
 pthread_t *queuing_cars_entrance;
 
 // for queuing cars at the exit
-int num_car_exit[5] = {0, 0, 0, 0, 0};
+int num_car_exit[5];
 car_t *cars_ex[5];
 car_t *last_car_ex[5];
 pthread_mutex_t mutex_car_ex[5];
@@ -75,7 +75,7 @@ bool store_plates() {
     // put value in array char
     while (fgets(temp, 8, f)) {
         temp[strcspn(temp, "\n")] = 0;
-        license_plate[i] = malloc(6);
+        license_plate[i] = malloc(7);
         strcpy(license_plate[i], temp);
         i++;
     }
@@ -140,7 +140,7 @@ void queue_car_exit(car_t *added_car, int exit_id) {
     /* lock the mutex, to assure exclusive access to the list */
     pthread_mutex_lock(&mutex_car_ex[exit_id]);
 
-    strncpy(a_car->license, added_car->license, 6);
+    memcpy(a_car->license, added_car->license, 6);
 
     /* add new car to the end of the list, updating list */
     /* pointers as required */
@@ -185,7 +185,7 @@ void simulate_car_exiting(car_t *car, int exit_id) {
     pthread_mutex_lock(&ex_lpr[exit_id]->m);
     printf("#%s is at the exit %d\n", car->license, exit_id + 1);
     // the car is at the exit
-    strncpy(ex_lpr[exit_id]->license, car->license, 6);
+    memcpy(ex_lpr[exit_id]->license, car->license, 6);
     // wait 2ms for the lpr exit to read
     usleep(2 * 1000);
     pthread_mutex_unlock(&ex_lpr[exit_id]->m);
@@ -240,7 +240,7 @@ void *simulate_car_exiting_handler(void *arg) {
 }
 //--------------------exit threads function ------------------
 
-void add_car_simulation(car_t *added_car, char lv, pthread_mutex_t *p_mutex,
+void add_car_simulation(car_t *added_car, int lv, pthread_mutex_t *p_mutex,
                         pthread_cond_t *p_cond_var) {
     car_t *a_car; /* pointer to newly added request.     */
 
@@ -257,8 +257,7 @@ void add_car_simulation(car_t *added_car, char lv, pthread_mutex_t *p_mutex,
     // strcpy(a_car->license, license);
     // a_car->exit_id = exit_id;
     // a_car->lv = lv;
-
-    strncpy(a_car->license, added_car->license, 6);
+    memcpy(a_car->license, added_car->license, 6);
     a_car->lv = lv;
 
     /* add new car to the end of the list, updating list */
@@ -309,7 +308,8 @@ void handle_a_car_simulation(car_t *car) {
 
     // signal the lv lpr for the first time to enter
     pthread_mutex_lock(&lv_lpr->m);
-    strncpy(lv_lpr->license, car->license, 6);
+    // printf("%s signaled lpr first time!\n", car->license);
+    memcpy(lv_lpr->license, car->license, 6);
     pthread_mutex_unlock(&lv_lpr->m);
     pthread_cond_signal(&lv_lpr->c);
 
@@ -320,8 +320,7 @@ void handle_a_car_simulation(car_t *car) {
 
     // signal the lv lpr for the second time to leave
     pthread_mutex_lock(&lv_lpr->m);
-    printf("%s signaled lpr again\n", car->license);
-    strncpy(lv_lpr->license, car->license, 6);
+    // printf("%s signaled lpr again\n", car->license);
 
     // random exit
     int exit_id = rand() % (int)5;
@@ -367,7 +366,7 @@ void queue_car_entrance(char license[6], int entrance_id) {
     /* lock the mutex, to assure exclusive access to the list */
     pthread_mutex_lock(&mutex_car_en[entrance_id]);
 
-    strncpy(a_car->license, license, 6);
+    memcpy(a_car->license, license, 6);
 
     /* add new car to the end of the list, updating list */
     /* pointers as required */
@@ -410,9 +409,9 @@ struct car *get_car_entrance(int entrance_id) {
 
 void simulate_car_entering(car_t *car, int entrance_id) {
     pthread_mutex_lock(&en_lpr[entrance_id]->m);
-    printf("#%s is at the entrance %d\n", car->license, entrance_id + 1);
+    // printf("#%s is at the entrance %d\n", car->license, entrance_id + 1);
     // the car is at the entrance
-    strncpy(en_lpr[entrance_id]->license, car->license, 6);
+    memcpy(en_lpr[entrance_id]->license, car->license, 6);
     // wait 2ms for the lpr entrance to read
     usleep(2 * 1000);
     pthread_mutex_unlock(&en_lpr[entrance_id]->m);
@@ -423,21 +422,21 @@ void simulate_car_entering(car_t *car, int entrance_id) {
     //  wait for the ist
     pthread_cond_wait(&ist[entrance_id]->c, &ist[entrance_id]->m);
     if (ist[entrance_id]->s == 'X') {
-        printf("ist says: %c\n", ist[entrance_id]->s);
+        // printf("ist says: %c\n", ist[entrance_id]->s);
         // this car is removed
         pthread_mutex_unlock(&ist[entrance_id]->m);
 
     } else if (ist[entrance_id]->s == 'F') {
-        printf("ist says: %c\n", ist[entrance_id]->s);
+        // printf("ist says: %c\n", ist[entrance_id]->s);
         // this car is removed
         pthread_mutex_unlock(&ist[entrance_id]->m);
 
     } else {
-        printf("this car can be parked on level %c! \n", ist[entrance_id]->s);
+        // printf("this car can be parked on level %c! \n", ist[entrance_id]->s);
         pthread_mutex_unlock(&ist[entrance_id]->m);
 
         pthread_mutex_lock(&en_bg[entrance_id]->m);
-        printf("Entrance %d is raising the boomgate!\n", entrance_id + 1);
+        // printf("Entrance %d is raising the boomgate!\n", entrance_id + 1);
         // raising for 10 ms
         en_bg[entrance_id]->s = 'R';
         usleep(10 * 1000);
@@ -447,7 +446,7 @@ void simulate_car_entering(car_t *car, int entrance_id) {
         pthread_cond_wait(&en_bg[entrance_id]->c, &en_bg[entrance_id]->m);
 
         // lowering for 10 ms
-        printf("Entrance %d is lowering the boomgate!\n", entrance_id + 1);
+        // printf("Entrance %d is lowering the boomgate!\n", entrance_id + 1);
         en_bg[entrance_id]->s = 'L';
         usleep(10 * 1000);
         // signal finish lowering
@@ -614,7 +613,7 @@ int main(int argc, char **argv) {
     pthread_create(generate_car, NULL, generate_car_handler, (void *)&generate_id);
     // }
 
-    sleep(30);
+    sleep(20);
     *(char *)(ptr + 2919) = 1;
 
     // destroy the segment

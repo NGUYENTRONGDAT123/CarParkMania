@@ -48,6 +48,18 @@ typedef struct level {
 
 typedef struct car {
     char license[6];
-    char lv;
+    int lv;
     struct car *next;
 } car_t;
+
+typedef struct item item_t;
+struct item {
+    char *key;
+    double value;
+    item_t *next;
+};
+
+typedef struct bill_task {
+    item_t *car;
+    struct bill_task *next;
+} bill_task_t;
