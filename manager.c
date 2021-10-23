@@ -1,74 +1,9 @@
-/*
-OVERVIEW
-    Monitor Status of the LPR Sensors and keep track of where each car is in the car park
-
-    Tell the Boom gates when to open and when to close (the boom gates are a simple piece
-    of hardware that can be only told to open or close, so the job of automatically closing
-    the boom gates after they have been open for a little while is up to the manager)
-
-    Control what is displayed on the information signs at each entrance
-
-    As the manager knows where each car is, it is the manager's job to ensure that there is
-    room in the car park before allowing new vehicles in
-        (number of cars < number of levels * num cars per level)
-    The manager also needs to keep track of how full the individual levels are and direct
-    new cars to a level that is not fully occupied
-
-    Keep track of how long each car has been in the parking lot and produce a bill once the
-    car leaves
-
-    Display the current status of the boom gates, signs, temperature sensors and alarms,
-    as well as how much revenie the car park has brought in so far
-
-TIMINGS
-    After the boom gate has been fully opened, it will start to close 20ms later. Cars
-    entering the car park will just drive in if the boom gate is fully open after they have
-    been directed to a level (however, if the car arrives just as the boom gate starts to
-    close, it will have to wait for the boom gate to fully close, then fully open again.)
-
-    Cars are billed based on how long they spend in the car park (see billing info)
-
-VEHICLE AUTH
-    Whenever a vehicle triggers an LPR, its plate should be checked against the contents of
-    the plates.txt file. For performance/scalability reasons, the plates need to be read
-    into a hash table, which will then be checked when new vehicles show up. Using the
-    hash table exercise from Prac 3 as a base is recommended, although not required
-
-    If a vehicles plate does not match with one in the plates.txt file, the digital sign
-    will display the character 'X' and the boom gate will not open for that vehicle
-
-BILLING
-    Cars are billed at a rate of 5 cents for every millisecond they spend in the car park
-    (that is the total amount of time between the car showing up at the entrance LPR and
-    the exit LPR). Cars who are turned away are not billed.
-
-    This bill is tracked per car and the amount of time. It is shown in dollars and cents,
-    written next to the cars license plate:
-        029MZH $8.25
-        088FSB $20.80
-
-    The manager writes these, line at a atime, to a file named billing.txt, each time a car
-    leaves the car park.
-
-    The billing.txt file will be created by the manager if it does not already exist, and must
-    be opened in APPEND mode, which means that future lines will be written to the end of the
-    file, if the file already exists (this will avoid the accidental overwriting of old records)
-*/
-
-#include <fcntl.h>
-#include <inttypes.h>  // for portable integer declarations
 #include <math.h>
 #include <pthread.h>
-#include <semaphore.h>
-#include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include "hashtable.c"
@@ -77,6 +12,15 @@ BILLING
 // for segment
 int shm_fd;
 void *ptr;
+// lpr
+LPR_t *en_lpr[5];
+LPR_t *ex_lpr[5];
+LPR_t *lv_lpr[5];
+// boomgate
+boomgate_t *en_bg[5];
+boomgate_t *ex_bg[5];
+// ist
+info_sign_t *ist[5];
 
 // threads for entrance
 pthread_t *entrance_threads;
@@ -88,16 +32,22 @@ pthread_t *lv_lpr_threads;
 // threads for exit
 pthread_t *exit_threads;
 
+// thread for displaying
+pthread_t *display_thread;
+
 // attributes for mutex and cond
 pthread_mutexattr_t m_shared;
 pthread_condattr_t c_shared;
+
+// mutex and cond for displaying thread
+pthread_mutex_t mutex_display = PTHREAD_MUTEX_INITIALIZER;
 
 // hash table
 htab_t h;          // for license plates
 htab_t h_billing;  // for billing
 htab_t h_lv;       // for levels
 
-int num_of_cars = 0;
+int total_cars = 0;
 
 // lpr pointer to save the address
 LPR_t *lv_lpr1;
@@ -142,7 +92,7 @@ bool create_hash_table() {
     htab_destroy(&h_billing);
 
     // buckets
-    size_t buckets = 100;  // one for each level
+    size_t buckets = 50;  // one for each level
     if (!htab_init(&h_billing, buckets)) {
         printf("failed to initialise hash table\n");
         return EXIT_FAILURE;
@@ -163,19 +113,12 @@ void *testing(void *arg) {
         sleep(1);
         usleep(20 * 1000);
         pthread_cond_signal(&lpr->c);
-        // sleep(1);
-        // usleep(165 * 1000);  // 165ms
-        // // sleep(1);
-        // pthread_cond_signal((pthread_cond_t *)(ptr + 2400));
 
         sleep(1);
 
         // second car
         strcpy(lpr->license, "030DWF");
         pthread_cond_signal(&lpr->c);
-        // usleep(416 * 1000);  // 416ms
-        // strcpy((char *)(ptr + 1528), "030DWF");
-        // pthread_cond_signal((pthread_cond_t *)(ptr + 2400));
 
         sleep(1);
         break;
@@ -200,8 +143,7 @@ void *control_entrance(void *arg) {
         item_t *found_car = htab_find(&h, lpr->license);
         // check the if license is whitelist
         if (found_car != NULL) {
-            printf("%s can be parked!\n", lpr->license);
-            system("clear");
+            // printf("%s can be parked!\n", lpr->license);
             // unlock the mutex
             pthread_mutex_unlock(&lpr->m);
 
@@ -209,20 +151,25 @@ void *control_entrance(void *arg) {
             //  lock mutex
             pthread_mutex_lock(&ist->m);
             // check number of cars in the park
-            if (num_of_cars <= 100) {
+            if (total_cars <= 100) {
                 // update the status
-                ist->s = (num_of_cars % 5) + 49;
+                int i = total_cars % 5;
+                // if the level is full
+                while (num_lv[i] >= 20) {
+                    if (i == 4) {
+                        i = 0;
+                    } else {
+                        i++;
+                    }
+                }
+                ist->s = i + 49;
 
-                int i = num_of_cars % 5;
-
-                printf("ist has assigned lv #%d\n", i + 1);
+                // printf("ist has assigned lv #%d\n", i + 1);
 
                 struct timeval start_time;
                 gettimeofday(&start_time, 0);
                 // add the car to hash table billing
                 htab_add_billing(&h_billing, found_car->key, start_time);
-
-                num_of_cars++;
 
                 // unlock the mutex of the ist
                 pthread_mutex_unlock(&ist->m);
@@ -233,7 +180,7 @@ void *control_entrance(void *arg) {
                 pthread_mutex_lock(&bg->m);
                 // wait for the simulation done raising
                 pthread_cond_wait(&bg->c, &bg->m);
-                printf("done raising\n");
+                // printf("done raising\n");
                 // after fully opened, wait for 20 ms
                 usleep(20 * 1000);
                 // signal to lower the gates
@@ -242,6 +189,7 @@ void *control_entrance(void *arg) {
                 // wait for the simulation done lowering
                 pthread_cond_wait(&bg->c, &bg->m);
                 bg->s = 'C';
+                total_cars++;
                 // unlock the mutex
                 pthread_mutex_unlock(&bg->m);
                 pthread_cond_signal(&bg->c);
@@ -253,7 +201,7 @@ void *control_entrance(void *arg) {
                 pthread_cond_signal(&ist->c);
             }
         } else {
-            printf("%s can not be parked!\n", lpr->license);
+            // printf("%s can not be parked!\n", lpr->license);
             // unlock the mutex
             pthread_mutex_unlock(&lpr->m);
 
@@ -283,11 +231,6 @@ void billing(item_t *found_car) {
     struct timeval current;
     gettimeofday(&current, 0);
 
-    // printf("start time: %ld\n", start_time);
-    // printf("end time: %ld\n", current);
-
-    // printf("the time is %fms\n", floor((float)(current.tv_sec - start_time.tv_sec) * 1000.0f + (current.tv_usec - start_time.tv_usec) / 1000.0f));
-
     // bill
     float bill = (floor((float)(current.tv_sec - start_time.tv_sec) * 1000.0f + (current.tv_usec - start_time.tv_usec) / 1000.0f)) * 0.05;
 
@@ -314,39 +257,34 @@ void *control_exit(void *arg) {
         // wait for the signal to start reading
         pthread_cond_wait(&lpr->c, &lpr->m);
 
-        printf("EX LPR IS SIGNALED!\n");
         // check the if license is whitelist
-        if (htab_find(&h, lpr->license) != NULL) {
-            printf("%s can be exited!\n", lpr->license);
+        item_t *found_car_exit = htab_find(&h, lpr->license);
+        if (found_car_exit != NULL) {
+            // printf("%s can be exited!\n", lpr->license);
             // unlock the mutex
-            pthread_mutex_unlock(&lpr->m);
-
-            item_t *found_car = htab_find(&h, lpr->license);
-            billing(found_car);
+            billing(found_car_exit);
             // delete the car in h_billing after calculate the bills
-            htab_delete(&h_billing, lpr->license);
-            // control the boomgate
-            // lock mutex
+            htab_delete(&h_billing, found_car_exit->key);
+            pthread_mutex_unlock(&lpr->m);
+            // control the bg
+            //   lock mutex
             pthread_mutex_lock(&bg->m);
-
-            printf("EXIT(# %ld) is opening the boomgate!\n", pthread_self());
-            bg->s = 'R';
-            // wait for the gate is opened for 10ms to change status to open
-            printf("EXIT(# %ld) is raising the boomgate!\n", pthread_self());
-            usleep(10 * 1000);
-            bg->s = 'O';
+            // wait for the simulation done raising
+            pthread_cond_wait(&bg->c, &bg->m);
             // after fully opened, wait for 20 ms
             usleep(20 * 1000);
-            bg->s = 'L';
-            // wait for the gate is closed for 10ms to change status to closed
-            printf("EXIT(# %ld) is lowering the boomgate!\n", pthread_self());
-            usleep(10 * 1000);
-            bg->s = 'C';
+            // signal to lower the gates
+            pthread_cond_signal(&bg->c);
 
+            // wait for the simulation done lowering
+            pthread_cond_wait(&bg->c, &bg->m);
+            bg->s = 'C';
+            total_cars--;
             // unlock the mutex
             pthread_mutex_unlock(&bg->m);
+            pthread_cond_signal(&bg->c);
         } else {
-            printf("%s can not be exited!", lpr->license);
+            // printf("%s can not be exited!", lpr->license);
             // unlock the mutex
             pthread_mutex_unlock(&lpr->m);
         }
@@ -380,18 +318,20 @@ void *control_lv_lpr(void *arg) {
         // wait for the signal to start reading
         pthread_cond_wait(&lpr->c, &lpr->m);
 
-        printf("LEVEL HAS BEEN SIGNALED!\n");
+        // printf("LEVEL HAS BEEN SIGNALED!\n");
 
         // get the level of the car park
         int index = get_lv_lpr(lpr);
-
         item_t *found_car = htab_find(&h, lpr->license);
 
         // if the car is not in the car park, add it
-        if (found_car == NULL) {
+        if (htab_find(&h_lv, lpr->license) == NULL) {
             num_lv[index]++;
+
             htab_add(&h_lv, lpr->license, 0);
-            printf("CAR HAS BEEN PARKED!\n");
+            // htab_print(&h_lv);
+
+            // printf("CAR HAS BEEN PARKED!\n");
             // htab_print(&h_billing);
 
             // unlock the mutex
@@ -402,10 +342,31 @@ void *control_lv_lpr(void *arg) {
             // delete the car in h_lv
             num_lv[index]--;
             htab_delete(&h_lv, lpr->license);
-            printf("CAR HAS BEEN EXITED!\n");
+            // htab_print(&h_lv);
+            // printf("CAR HAS BEEN EXITED!\n");
             // unlock the mutex
             pthread_mutex_unlock(&lpr->m);
         }
+    }
+}
+
+// display the status and run in loop with 50ms sleep
+void *display(void *arg) {
+    for (;;) {
+        system("clear");
+        // status of each lpr, bg and ist
+        pthread_mutex_lock(&mutex_display);
+
+        printf("num_of_cars: %d", total_cars);
+        for (int i = 0; i < 5; i++) {
+            printf("\n------------------------\n");
+            printf("entrance id %d status: lpr:%s \t digital sign: %c \tboomgate: %c\n", i + 1, en_lpr[i]->license, ist[i]->s, en_bg[i]->s);
+            printf("level %d: lpr: %s \tcapacity: %d\n", i + 1, lv_lpr[i]->license, num_lv[i]);
+            printf("exit id %d status: lpr:%s \tboomgate: %c\n", i + 1, ex_lpr[i]->license, en_bg[i]->s);
+            printf("------------------------\n");
+        }
+        pthread_mutex_unlock(&mutex_display);
+        usleep(50 * 1000);  // sleep for 50ms
     }
 }
 
@@ -455,47 +416,48 @@ int main() {
         int lv_addr = i * sizeof(lv_t) + 2400;
 
         // lpr
-        LPR_t *en_lpr = ptr + en_addr;
-        LPR_t *ex_lpr = ptr + ex_addr;
-        LPR_t *lv_lpr = ptr + lv_addr;
+        en_lpr[i] = ptr + en_addr;
+        ex_lpr[i] = ptr + ex_addr;
+        lv_lpr[i] = ptr + lv_addr;
 
         // boomgate
-        boomgate_t *en_bg = ptr + en_addr + 96;
-        boomgate_t *ex_bg = ptr + ex_addr + 136;
+        en_bg[i] = ptr + en_addr + 96;
+        ex_bg[i] = ptr + ex_addr + 136;
 
         // ist
-        info_sign_t *ist = ptr + en_addr + 192;
+        ist[i] = ptr + en_addr + 192;
 
         // bg status' default is C
-        en_bg->s = 'C';
-        ex_bg->s = 'C';
+        en_bg[i]->s = 'C';
+        ex_bg[i]->s = 'C';
 
         printf("\nCREATING #%d\n", i + 1);
 
         // entrance pointer
         en_t *en_ptr = ptr + en_addr;
-        en_ptr->lpr = *en_lpr;
-        en_ptr->bg = *en_bg;
-        en_ptr->ist = *ist;
+        en_ptr->lpr = *en_lpr[i];
+        en_ptr->bg = *en_bg[i];
+        en_ptr->ist = *ist[i];
 
         // exit pointer
         exit_t *ex_ptr = ptr + ex_addr;
-        ex_ptr->lpr = *ex_lpr;
-        ex_ptr->bg = *ex_bg;
+        ex_ptr->lpr = *ex_lpr[i];
+        ex_ptr->bg = *ex_bg[i];
 
         // entrance threads
         pthread_create(entrance_threads + i, NULL, control_entrance, en_ptr);
 
         // lv threads
-        pthread_create(lv_lpr_threads + i, NULL, control_lv_lpr, lv_lpr);
+        pthread_create(lv_lpr_threads + i, NULL, control_lv_lpr, lv_lpr[i]);
 
         // exits threads
         pthread_create(exit_threads + i, NULL, control_exit, ex_ptr);
         // testing
         // pthread_create(testing_thread, NULL, testing, en_lpr);
-
-        fflush(stdin);
     }
+
+    display_thread = malloc(sizeof(pthread_t));
+    pthread_create(display_thread, NULL, display, NULL);
 
     *(char *)(ptr + 2919) = 0;
     // wait until the manager change the process of then we can stop the manager

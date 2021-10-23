@@ -48,7 +48,6 @@ typedef struct level {
 
 typedef struct car {
     char license[6];
-    int exit_id;
     char lv;
     struct car *next;
 } car_t;
