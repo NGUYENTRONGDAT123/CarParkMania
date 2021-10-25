@@ -183,34 +183,42 @@ struct car *get_car_exit(int exit_id) {
 
 void simulate_car_exiting(car_t *car, int exit_id) {
     pthread_mutex_lock(&ex_lpr[exit_id]->m);
+    usleep(10 * 1000);  // take 10ms to get to the exit
     printf("#%s is at the exit %d\n", car->license, exit_id + 1);
     // the car is at the exit
     memcpy(ex_lpr[exit_id]->license, car->license, 6);
     // wait 2ms for the lpr exit to read
     usleep(2 * 1000);
-    pthread_mutex_unlock(&ex_lpr[exit_id]->m);
     // signal the lpr exit to read
     pthread_cond_signal(&ex_lpr[exit_id]->c);
+    pthread_cond_wait(&ex_lpr[exit_id]->c, &ex_lpr[exit_id]->m);
+    pthread_mutex_unlock(&ex_lpr[exit_id]->m);
 
     // simulate the boomgate
     pthread_mutex_lock(&ex_bg[exit_id]->m);
-
+    pthread_cond_wait(&ex_bg[exit_id]->c, &ex_bg[exit_id]->m);
     printf("Exit %d is raising the boomgate!\n", exit_id + 1);
+    printf("Exit %d: %c\n", exit_id + 1, ex_bg[exit_id]->s);
     // raising for 10 ms
     ex_bg[exit_id]->s = 'R';
     usleep(10 * 1000);
+    pthread_mutex_unlock(&ex_bg[exit_id]->m);
     pthread_cond_signal(&ex_bg[exit_id]->c);
 
+    pthread_mutex_lock(&ex_bg[exit_id]->m);
     // wait for the manager tells to close
     pthread_cond_wait(&ex_bg[exit_id]->c, &ex_bg[exit_id]->m);
+    // while (ex_bg[exit_id]->s == 'R') {
+    // };
 
+    printf("Exit %d: %c\n", exit_id + 1, ex_bg[exit_id]->s);
     // lowering for 10 ms
     printf("Exit %d is lowering the boomgate!\n", exit_id + 1);
     ex_bg[exit_id]->s = 'L';
     usleep(10 * 1000);
+
     // signal finish lowering
     pthread_cond_signal(&ex_bg[exit_id]->c);
-
     // wait for the gate to fully close
     pthread_cond_wait(&ex_bg[exit_id]->c, &ex_bg[exit_id]->m);
     pthread_mutex_unlock(&ex_bg[exit_id]->m);
@@ -444,7 +452,6 @@ void simulate_car_entering(car_t *car, int entrance_id) {
 
         // wait for the manager tells to close
         pthread_cond_wait(&en_bg[entrance_id]->c, &en_bg[entrance_id]->m);
-
         // lowering for 10 ms
         // printf("Entrance %d is lowering the boomgate!\n", entrance_id + 1);
         en_bg[entrance_id]->s = 'L';
@@ -487,17 +494,17 @@ void *simulate_car_entering_handler(void *arg) {
 void *generate_car_handler(void *arg) {
     bool flag = true;
     // do forever
-    for (;;) {
-        // create a car
-        char *rand_license = random_cars(flag);
-        // assign cars to the entrance
-        int entrance_id = rand() % (int)(5);
-        queue_car_entrance(rand_license, entrance_id);
+    // for (;;) {
+    // create a car
+    char *rand_license = random_cars(flag);
+    // assign cars to the entrance
+    int entrance_id = rand() % (int)(5);
+    queue_car_entrance(rand_license, entrance_id);
 
-        flag = !flag;
-        // sleep(1);
-        usleep((rand() % 100) * 1000);
-    }
+    flag = !flag;
+    // sleep(1);
+    usleep((rand() % 100) * 1000);
+    // }
 }
 
 int main(int argc, char **argv) {

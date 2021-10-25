@@ -176,13 +176,6 @@ void *control_entrance(void *arg) {
                 }
                 ist->s = i + 49;
 
-                // printf("ist has assigned lv #%d\n", i + 1);
-
-                // struct timeval start_time;
-                // gettimeofday(&start_time, 0);
-                // // add the car to hash table billing
-                // htab_add_billing(&h_billing, found_car->key, start_time);
-
                 clock_t t1;
                 t1 = clock();
                 htab_add(&h_billing, found_car->key, t1);
@@ -196,7 +189,7 @@ void *control_entrance(void *arg) {
                 pthread_mutex_lock(&bg->m);
                 // wait for the simulation done raising
                 pthread_cond_wait(&bg->c, &bg->m);
-                // printf("done raising\n");
+                bg->s = 'O';
                 // after fully opened, wait for 20 ms
                 usleep(20 * 1000);
                 // signal to lower the gates
@@ -328,9 +321,12 @@ void *handle_billing(void *arg) {
 
 // control the exit lpr
 void *control_exit(void *arg) {
-    exit_t *ex = arg;
-    LPR_t *lpr = &ex->lpr;
-    boomgate_t *bg = &ex->bg;
+    int id = *((int *)arg);
+    // LPR_t *lpr = &ex->lpr;
+    LPR_t *lpr = ex_lpr[id];
+    // boomgate_t *bg = &ex->bg;
+    boomgate_t *bg = ex_bg[id];
+
     // printf("EXIT CREATED!\n");
 
     for (;;) {
@@ -347,15 +343,25 @@ void *control_exit(void *arg) {
             // get the car in h_billing
             item_t *billing_car = htab_find(&h_billing, found_car->key);
             add_bill_task(billing_car);
-
             pthread_mutex_unlock(&lpr->m);
+            pthread_cond_signal(&lpr->c);
+
+            // printf("%c\n", bg->s);
+
             // control the bg
-            //   lock mutex
             pthread_mutex_lock(&bg->m);
+            // bg status' default is C
+            ex_bg[id]->s = 'C';
+
+            pthread_cond_signal(&bg->c);
+
             // wait for the simulation done raising
             pthread_cond_wait(&bg->c, &bg->m);
+            bg->s = 'O';
             // after fully opened, wait for 20 ms
             usleep(20 * 1000);
+            // while (true) {
+            // };
             // signal to lower the gates
             pthread_cond_signal(&bg->c);
 
@@ -458,6 +464,8 @@ void *display(void *arg) {
 
 // main function
 int main() {
+    int ex_id[EXITS];
+
     // store plates from txt file
     store_plates();
 
@@ -516,11 +524,9 @@ int main() {
         // ist
         ist[i] = ptr + en_addr + 192;
 
-        // bg status' default is C
-        en_bg[i]->s = 'C';
-        ex_bg[i]->s = 'C';
-
         printf("\nCREATING #%d\n", i + 1);
+
+        en_bg[i]->s = 'C';
 
         // entrance pointer
         en_t *en_ptr = ptr + en_addr;
@@ -528,27 +534,29 @@ int main() {
         en_ptr->bg = *en_bg[i];
         en_ptr->ist = *ist[i];
 
-        // exit pointer
-        exit_t *ex_ptr = ptr + ex_addr;
-        ex_ptr->lpr = *ex_lpr[i];
-        ex_ptr->bg = *ex_bg[i];
-
         // entrance threads
         pthread_create(entrance_threads + i, NULL, control_entrance, en_ptr);
 
         // lv threads
         pthread_create(lv_lpr_threads + i, NULL, control_lv_lpr, lv_lpr[i]);
 
+        // // exit pointer
+        // exit_t *ex_ptr = ptr + ex_addr;
+        // ex_ptr->lpr = *ex_lpr[i];
+        // ex_ptr->bg = *ex_bg[i];
+
+        ex_id[i] = i;
+
         // exits threads
-        pthread_create(exit_threads + i, NULL, control_exit, ex_ptr);
+        pthread_create(exit_threads + i, NULL, control_exit, (void *)&ex_id[i]);
         // testing
         // pthread_create(testing_thread, NULL, testing, en_lpr);
 
         pthread_create(billing_thread + i, NULL, handle_billing, NULL);
     }
 
-    display_thread = malloc(sizeof(pthread_t));
-    pthread_create(display_thread, NULL, display, NULL);
+    // display_thread = malloc(sizeof(pthread_t));
+    // pthread_create(display_thread, NULL, display, NULL);
 
     *(char *)(ptr + 2919) = 0;
     // wait until the manager change the process of then we can stop the manager
