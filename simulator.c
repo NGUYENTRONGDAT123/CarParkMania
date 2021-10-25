@@ -587,7 +587,7 @@ int main(int argc, char **argv) {
 
     *(char *)(ptr + 2919) = 1;
 
-    // wait until the manager change the process of then we can stop the manager
+    // wait until the manager change the process of then we can continue the simulator
     while ((*(char *)(ptr + 2919)) == 1) {
     };
 
@@ -621,6 +621,8 @@ int main(int argc, char **argv) {
     // }
 
     sleep(40);
+
+    //call the manager to stop
     *(char *)(ptr + 2919) = 1;
 
     // destroy the segment

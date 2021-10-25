@@ -56,7 +56,7 @@ GENERAL
 #include <unistd.h>
 
 int shm_fd;
-volatile void *shm;
+void *shm;
 
 int alarm_active = 0;
 pthread_mutex_t alarm_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -99,13 +99,15 @@ int compare(const void *first, const void *second) {
     return *((const int *)first) - *((const int *)second);
 }
 
-void tempmonitor(int level) {
+void *tempmonitor(void *arg) {
     struct tempnode *templist = NULL, *newtemp, *medianlist = NULL, *oldesttemp;
     int count, addr, temp, mediantemp, hightemps;
+    int level = *((int *)arg);
+
 
     for (;;) {
         // Calculate address of temperature sensor
-        addr = 0150 * level + 2496;
+        addr = 104 * level + 2496;
         temp = *((int16_t *)(shm + addr));
 
         // Add temperature to beginning of linked list
@@ -153,6 +155,8 @@ void tempmonitor(int level) {
                 count++;
             }
 
+            printf("Temp: %d\n", newtemp->temperature);
+
             if (count == TEMPCHANGE_WINDOW) {
                 // If 90% of the last 30 temperatures are >= 58 degrees,
                 // this is considered a high temperature. Raise the alarm
@@ -167,7 +171,7 @@ void tempmonitor(int level) {
             }
         }
 
-        usleep(2000);
+        usleep(5000);
     }
 }
 
@@ -188,13 +192,15 @@ void *openboomgate(void *arg) {
 
 int main() {
     shm_fd = shm_open("PARKING", O_RDWR, 0);
-    shm = (volatile void *)mmap(0, 2920, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    shm = (void *)mmap(0, 2920, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
 
     pthread_t *threads = malloc(sizeof(pthread_t) * LEVELS);
 
     for (int i = 0; i < LEVELS; i++) {
-        pthread_create(threads + i, NULL, (void *(*)(void *))tempmonitor, (void *)i);
+        pthread_create(threads + i, NULL, tempmonitor, &i);
     }
+
+    *(char *)(shm + 2919) = 0;
     for (;;) {
         if (alarm_active) {
             goto emergency_mode;
@@ -217,12 +223,12 @@ emergency_mode:
     pthread_t *boomgatethreads = malloc(sizeof(pthread_t) * (ENTRANCES + EXITS));
     for (int i = 0; i < ENTRANCES; i++) {
         int addr = 288 * i + 96;
-        volatile struct boomgate *bg = shm + addr;
+         struct boomgate *bg = shm + addr;
         pthread_create(boomgatethreads + i, NULL, openboomgate, bg);
     }
     for (int i = 0; i < EXITS; i++) {
         int addr = 192 * i + 1536;
-        volatile struct boomgate *bg = shm + addr;
+         struct boomgate *bg = shm + addr;
         pthread_create(boomgatethreads + ENTRANCES + i, NULL, openboomgate, bg);
     }
 
@@ -232,7 +238,7 @@ emergency_mode:
         for (char *p = evacmessage; *p != '\0'; p++) {
             for (int i = 0; i < ENTRANCES; i++) {
                 int addr = 288 * i + 192;
-                volatile struct parkingsign *sign = shm + addr;
+                struct parkingsign *sign = shm + addr;
                 pthread_mutex_lock(&sign->m);
                 sign->display = *p;
                 pthread_cond_broadcast(&sign->c);
