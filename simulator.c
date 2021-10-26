@@ -33,6 +33,9 @@ boomgate_t *ex_bg[5];
 // ist
 info_sign_t *ist[5];
 
+//temp
+unsigned short *lv_temp[5];
+
 // for creating random liceneses
 pthread_t *generate_car;
 const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -67,6 +70,8 @@ car_t *last_car_ex[5];
 pthread_mutex_t mutex_car_ex[5];
 pthread_cond_t cond_car_ex[5];
 pthread_t *queuing_cars_exit;
+
+pthread_t *simulate_temp;
 
 // initalize hash tables for storing plates from txt
 bool store_plates() {
@@ -507,11 +512,29 @@ void *generate_car_handler(void *arg) {
     // }
 }
 
+
+//---------------temps------------------
+void *simulate_temp_handler(void *arg) {
+    int id = *((int *)arg);
+    unsigned short temp = 30;
+    // do forever
+    for (;;) {
+        lv_temp[id] = &temp;
+        printf("%d\n", *lv_temp[id]);
+
+        usleep(100000);
+        //printf("Temp %d: %d\n", id, lv_info[id]->temp);
+
+
+    }
+}
+
 int main(int argc, char **argv) {
     int generate_id = 1;
     int thread_id = 1;
     int en_id[ENTRANCES];
     int ex_id[EXITS];
+    int lv_id[LEVELS];
 
     // delete the segment if exists
     if (shm_fd > 0) {
@@ -556,6 +579,10 @@ int main(int argc, char **argv) {
 
         // ist
         ist[i] = ptr + en_addr + 192;
+
+        // lvl temp
+        lv_temp[i] = ptr + lv_addr + 96; 
+
         // mutexes and cond for lpr
         pthread_mutex_init(&en_lpr[i]->m, &m_shared);
         pthread_mutex_init(&ex_lpr[i]->m, &m_shared);
@@ -583,6 +610,7 @@ int main(int argc, char **argv) {
         // mutexes and conds for queuing the entrance
         pthread_mutex_init(&mutex_car_ex[i], &m_shared);
         pthread_cond_init(&cond_car_ex[i], &c_shared);
+
     }
 
     *(char *)(ptr + 2919) = 1;
@@ -611,6 +639,13 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 5; i++) {
         en_id[i] = i;
         pthread_create(queuing_cars_entrance + i, NULL, simulate_car_entering_handler, (void *)&en_id[i]);
+    }
+
+    simulate_temp = malloc(sizeof(pthread_t) * 5);
+    // create threads for temp changing
+    for (int i = 0; i < 5; i++) {
+        lv_id[i] = i;
+        pthread_create(simulate_temp + i, NULL, simulate_temp_handler, (void *)&lv_id[i]);
     }
 
     generate_car = malloc(sizeof(pthread_t) * 1);
