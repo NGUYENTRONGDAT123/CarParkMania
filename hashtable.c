@@ -80,39 +80,6 @@ item_t *htab_find(htab_t *h, char *key) {
 // pre: htab_find(h, key) == NULL
 // post: (return == false AND allocation of new item failed)
 //       OR (htab_find(h, key) != NULL)
-// bool htab_add(htab_t *h, char *key, long value) {
-//     item_t *
-//         newhead = (item_t *)malloc(sizeof(item_t));
-//     if (newhead == NULL) {
-//         return false;
-//     }
-//     newhead->key = key;
-//     newhead->value = value;
-
-//     // hash key and place item in appropriate bucket
-//     size_t bucket = htab_index(h, key);
-//     // newhead->next = h->buckets[bucket];
-//     // h->buckets[bucket] = newhead;
-
-//     // add it to the last of linked list
-//     if (h->buckets[bucket] == NULL) {
-//         h->buckets[bucket] = newhead;
-//     } else {
-//         item_t *last = h->buckets[bucket];
-//         while (last->next != NULL) {
-//             last = last->next;
-//         }
-
-//         // add the new value to the last
-//         last->next = newhead;
-//     }
-//     return true;
-// }
-
-// Add a key with value to the hash table.
-// pre: htab_find(h, key) == NULL
-// post: (return == false AND allocation of new item failed)
-//       OR (htab_find(h, key) != NULL)
 bool htab_add(htab_t *h, char *key, double value) {
     // allocate new item
     item_t *newhead = (item_t *)malloc(sizeof(item_t));
@@ -171,6 +138,26 @@ void htab_print(htab_t *h) {
 // post: htab_find(h, key) == NULL
 void htab_delete(htab_t *h, char *key) {
     item_t *head = htab_bucket(h, key);
+    item_t *current = head;
+    item_t *previous = NULL;
+    while (current != NULL) {
+        if (strcmp(current->key, key) == 0) {
+            if (previous == NULL) {  // first item in list
+                h->buckets[htab_index(h, key)] = current->next;
+            } else {
+                previous->next = current->next;
+            }
+            free(current);
+            break;
+        }
+        previous = current;
+        current = current->next;
+    }
+}
+
+void htab_delete_level(htab_t *h, char *key, int level) {
+    // item_t *head = htab_bucket(h, key);
+    item_t *head = h->buckets[level];
     item_t *current = head;
     item_t *previous = NULL;
     while (current != NULL) {
