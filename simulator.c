@@ -376,10 +376,29 @@ void *simulate_car_handler(void *arg) {
 
 void *simulate_temp(void *arg) {
     int id = (*(int *)arg);
+    int previous = (rand() % 15) + 10;
 
     for (;;) {
         pthread_mutex_lock(&mutex_temp[id]);
-        lv[id]->temp = rand() % 50 + 20;
+        
+        //lv[id]->temp = (id + 2) * 10;
+
+        //temp too low
+        if (previous <= 10){
+            lv[id]->temp = previous + (rand() % 2);
+        } 
+        //temp too high
+        else if (previous >= 40) {
+            lv[id]->temp = 40 - (rand() % 2);
+        } 
+        //randomly change temp
+        else {
+            //lv[id]->temp = previous + ((rand() % 5) - 2);
+            lv[id]->temp = previous + ((rand() % 3) - 1);
+
+        }
+
+        previous = lv[id]->temp;
         usleep((rand() % 5) * 1000);
         pthread_mutex_unlock(&mutex_temp[id]);
     }
@@ -616,10 +635,10 @@ int main(int argc, char **argv) {
         pthread_mutex_init(&mutex_temp[i], &m_shared);
     }
 
-    *(char *)(ptr + 2919) = 1;
+    *(char *)(ptr + 2919) = 0;
 
     // wait until the manager change the process of then we can stop the manager
-    while ((*(char *)(ptr + 2919)) == 1) {
+    while ((*(char *)(ptr + 2919)) == 0) {
     };
 
     queuing_cars_exit = malloc(sizeof(pthread_t) * 5);
@@ -656,7 +675,7 @@ int main(int argc, char **argv) {
     // }
 
     sleep(20);
-    *(char *)(ptr + 2919) = 1;
+    *(char *)(ptr + 2919) = 0;
 
     // destroy the segment
     if (munmap(ptr, SHARE_SIZE) != 0) {

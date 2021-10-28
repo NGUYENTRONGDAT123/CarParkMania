@@ -443,7 +443,7 @@ void *display(void *arg) {
         for (int i = 0; i < 5; i++) {
             printf("\n------------------------\n");
             printf("entrance id %d status: lpr:%s \t digital sign: %c \tboomgate: %c\n", i + 1, en_lpr[i]->license, ist[i]->s, en_bg[i]->s);
-            printf("level %d: lpr: %s \tcapacity: %d \t temperature: %d Celsisus\n", i + 1, lv_lpr[i]->license, num_lv[i], lv[i]->temp);
+            printf("level %d: lpr: %s \tcapacity: %d \t temperature: %d Celsisus\n", i + 1, lv_lpr[i]->license, num_lv[i], lv[i]->median_temp);
             printf("exit id %d status: lpr:%s \tboomgate: %c\n", i + 1, ex_lpr[i]->license, en_bg[i]->s);
             printf("------------------------\n");
         }
@@ -471,8 +471,8 @@ int main() {
     ftruncate(shm_fd, SHARE_SIZE);
     // get the address and save it in the pointer
     ptr = (void *)mmap(0, SHARE_SIZE, PROT_WRITE | PROT_READ, MAP_SHARED, shm_fd, 0);
-    // printf("%p\n", ptr);
-
+    //printf("%p\n", ptr);
+    //sleep(1);
     // create structure pthreads
     // create threads for entrances
     entrance_threads = malloc(sizeof(pthread_t) * ENTRANCES);
@@ -544,9 +544,9 @@ int main() {
     display_thread = malloc(sizeof(pthread_t));
     pthread_create(display_thread, NULL, display, NULL);
 
-    *(char *)(ptr + 2919) = 2;
+    *(char *)(ptr + 2919) = 1;
     // wait until the manager change the process of then we can stop the manager
-    while ((*(char *)(ptr + 2919)) == 0) {
+    while ((*(char *)(ptr + 2919)) == 1) {
     };
 
     // free threads

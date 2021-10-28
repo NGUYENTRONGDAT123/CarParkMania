@@ -42,8 +42,9 @@ typedef struct exit {
 
 typedef struct level {
     LPR_t lpr;
-    unsigned short temp;  // 2 bytes
+    int16_t temp;  // 2 bytes
     char sign;
+    int16_t median_temp;
 } lv_t;
 
 typedef struct car {
