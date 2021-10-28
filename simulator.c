@@ -33,8 +33,8 @@ boomgate_t *ex_bg[5];
 // ist
 info_sign_t *ist[5];
 
-//temp
-unsigned short *lv_temp[5];
+// lv
+lv_t *lv[5];
 
 // for creating random liceneses
 pthread_t *generate_car;
@@ -71,7 +71,10 @@ pthread_mutex_t mutex_car_ex[5];
 pthread_cond_t cond_car_ex[5];
 pthread_t *queuing_cars_exit;
 
-pthread_t *simulate_temp;
+// for temperature
+int lv_id[5];
+pthread_t *temp_threads;
+pthread_mutex_t mutex_temp[5];
 
 // initalize hash tables for storing plates from txt
 bool store_plates() {
@@ -371,6 +374,17 @@ void *simulate_car_handler(void *arg) {
 }
 //--------------------simulation threads function ------------------
 
+void *simulate_temp(void *arg) {
+    int id = (*(int *)arg);
+
+    for (;;) {
+        pthread_mutex_lock(&mutex_temp[id]);
+        lv[id]->temp = rand() % 50 + 20;
+        usleep((rand() % 5) * 1000);
+        pthread_mutex_unlock(&mutex_temp[id]);
+    }
+}
+
 //--------------------entrance threads function ------------------
 void queue_car_entrance(char license[6], int entrance_id) {
     car_t *a_car; /* pointer to newly added request.     */
@@ -518,29 +532,11 @@ void *generate_car_handler(void *arg) {
     }
 }
 
-
-//---------------temps------------------
-void *simulate_temp_handler(void *arg) {
-    int id = *((int *)arg);
-    unsigned short temp = 30;
-    // do forever
-    for (;;) {
-        lv_temp[id] = &temp;
-        printf("%d\n", *lv_temp[id]);
-
-        usleep(100000);
-        //printf("Temp %d: %d\n", id, lv_info[id]->temp);
-
-
-    }
-}
-
 int main(int argc, char **argv) {
     int generate_id = 1;
     int thread_id = 1;
     int en_id[ENTRANCES];
     int ex_id[EXITS];
-    int lv_id[LEVELS];
 
     // delete the segment if exists
     if (shm_fd > 0) {
@@ -586,9 +582,8 @@ int main(int argc, char **argv) {
         // ist
         ist[i] = ptr + en_addr + 192;
 
-        // lvl temp
-        lv_temp[i] = ptr + lv_addr + 96; 
-
+        // lv
+        lv[i] = ptr + lv_addr;
         // mutexes and cond for lpr
         pthread_mutex_init(&en_lpr[i]->m, &m_shared);
         pthread_mutex_init(&ex_lpr[i]->m, &m_shared);
@@ -617,6 +612,8 @@ int main(int argc, char **argv) {
         pthread_mutex_init(&mutex_car_ex[i], &m_shared);
         pthread_cond_init(&cond_car_ex[i], &c_shared);
 
+        // mutexes for temperature
+        pthread_mutex_init(&mutex_temp[i], &m_shared);
     }
 
     *(char *)(ptr + 2919) = 1;
@@ -625,8 +622,6 @@ int main(int argc, char **argv) {
     while ((*(char *)(ptr + 2919)) == 1) {
     };
 
-    simulate_car = malloc(sizeof(pthread_t) * NUM_HANDLER_THREADS);
-
     queuing_cars_exit = malloc(sizeof(pthread_t) * 5);
     // create threads for queuing cars at the entrance
     for (int i = 0; i < 5; i++) {
@@ -634,10 +629,18 @@ int main(int argc, char **argv) {
         pthread_create(queuing_cars_exit + i, NULL, simulate_car_exiting_handler, (void *)&ex_id[i]);
     }
 
+    simulate_car = malloc(sizeof(pthread_t) * NUM_HANDLER_THREADS);
     // create threads for simulating the car
     for (int i = 0; i < NUM_HANDLER_THREADS; i++) {
         pthread_create(simulate_car, NULL, simulate_car_handler, (void *)&thread_id);
         thread_id++;
+    }
+
+    temp_threads = malloc(sizeof(pthread_t) * 5);
+    // create threads for temperature
+    for (int i = 0; i < LEVELS; i++) {
+        lv_id[i] = i;
+        pthread_create(temp_threads + i, NULL, simulate_temp, (void *)&lv_id[i]);
     }
 
     queuing_cars_entrance = malloc(sizeof(pthread_t) * 5);
@@ -645,13 +648,6 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 5; i++) {
         en_id[i] = i;
         pthread_create(queuing_cars_entrance + i, NULL, simulate_car_entering_handler, (void *)&en_id[i]);
-    }
-
-    simulate_temp = malloc(sizeof(pthread_t) * 5);
-    // create threads for temp changing
-    for (int i = 0; i < 5; i++) {
-        lv_id[i] = i;
-        pthread_create(simulate_temp + i, NULL, simulate_temp_handler, (void *)&lv_id[i]);
     }
 
     generate_car = malloc(sizeof(pthread_t) * 1);

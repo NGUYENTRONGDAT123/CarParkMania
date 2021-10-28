@@ -22,8 +22,8 @@ boomgate_t *ex_bg[5];
 // ist
 info_sign_t *ist[5];
 
-//temp
-unsigned short *lv_temp[5];
+// lv
+lv_t *lv[5];
 
 // threads for entrance
 pthread_t *entrance_threads;
@@ -443,7 +443,7 @@ void *display(void *arg) {
         for (int i = 0; i < 5; i++) {
             printf("\n------------------------\n");
             printf("entrance id %d status: lpr:%s \t digital sign: %c \tboomgate: %c\n", i + 1, en_lpr[i]->license, ist[i]->s, en_bg[i]->s);
-            printf("level %d: lpr: %s \tcapacity: %d\ttemperature: %d\n", i + 1, lv_lpr[i]->license, num_lv[i], *lv_temp[i]);
+            printf("level %d: lpr: %s \tcapacity: %d \t temperature: %d Celsisus\n", i + 1, lv_lpr[i]->license, num_lv[i], lv[i]->temp);
             printf("exit id %d status: lpr:%s \tboomgate: %c\n", i + 1, ex_lpr[i]->license, en_bg[i]->s);
             printf("------------------------\n");
         }
@@ -515,8 +515,8 @@ int main() {
         // ist
         ist[i] = ptr + en_addr + 192;
 
-        // lvl temp
-        lv_temp[i] = ptr + lv_addr + 96; 
+        // lv
+        lv[i] = ptr + lv_addr;
 
         printf("\nCREATING #%d\n", i + 1);
 
