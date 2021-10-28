@@ -544,7 +544,7 @@ int main() {
     display_thread = malloc(sizeof(pthread_t));
     pthread_create(display_thread, NULL, display, NULL);
 
-    *(char *)(ptr + 2919) = 0;
+    *(char *)(ptr + 2919) = 2;
     // wait until the manager change the process of then we can stop the manager
     while ((*(char *)(ptr + 2919)) == 0) {
     };

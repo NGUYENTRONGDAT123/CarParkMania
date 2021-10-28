@@ -670,6 +670,7 @@ int main(int argc, char **argv) {
     free(simulate_car);
     free(queuing_cars_entrance);
     free(queuing_cars_exit);
+    free(temp_threads);
 
     // destroy mutex and cond attributes
     pthread_mutexattr_destroy(&m_shared);
