@@ -394,11 +394,11 @@ void *simulate_temp(void *arg) {
 
         //Run to get 2nd type of emergency
         //after an amount of time, trigger the emergency
-        if (count >= 2000){
-            lv[id]->temp = (rand() % 15) + base_temp;
-        } else {
-            lv[id]->temp = (rand() % 8) + base_temp;
-        }
+        // if (count >= 2000){
+        //     lv[id]->temp = (rand() % 15) + base_temp;
+        // } else {
+        //     lv[id]->temp = (rand() % 8) + base_temp;
+        // }
 
         count++;
 
