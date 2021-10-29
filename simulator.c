@@ -376,30 +376,33 @@ void *simulate_car_handler(void *arg) {
 
 void *simulate_temp(void *arg) {
     int id = (*(int *)arg);
-    int previous = (rand() % 15) + 10;
-
+    int count = 1;
+    int base_temp = 20;
     for (;;) {
-        pthread_mutex_lock(&mutex_temp[id]);
-        
-        //lv[id]->temp = (id + 2) * 10;
+        pthread_mutex_lock(&mutex_temp[id]);        
+       
+        //Run without emergency
+        lv[id]->temp = (rand() % 8) + base_temp;
 
-        //temp too low
-        if (previous <= 10){
-            lv[id]->temp = previous + (rand() % 2);
-        } 
-        //temp too high
-        else if (previous >= 40) {
-            lv[id]->temp = 40 - (rand() % 2);
-        } 
-        //randomly change temp
-        else {
-            //lv[id]->temp = previous + ((rand() % 5) - 2);
-            lv[id]->temp = previous + ((rand() % 3) - 1);
+            
+        //Run with first type of emergency
+        //Slowly increase temperature
+        // if (count % 30 == 0){
+        //     base_temp++;
+        // }
+        // lv[id]->temp = (rand() % 8) + base_temp;
 
+        //Run to get 2nd type of emergency
+        //after an amount of time, trigger the emergency
+        if (count >= 2000){
+            lv[id]->temp = (rand() % 15) + base_temp;
+        } else {
+            lv[id]->temp = (rand() % 8) + base_temp;
         }
 
-        previous = lv[id]->temp;
-        usleep((rand() % 5) * 1000);
+        count++;
+
+        usleep(((rand() % 5) + 1 ) * 1000);
         pthread_mutex_unlock(&mutex_temp[id]);
     }
 }

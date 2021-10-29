@@ -161,7 +161,7 @@ void *control_entrance(void *arg) {
         item_t *found_car = htab_find(&h, en_lpr[id]->license);
         // check the if license is whitelist
         if (found_car != NULL) {
-            printf("%s can be parked!\n", en_lpr[id]->license);
+            //printf("%s can be parked!\n", en_lpr[id]->license);
             // unlock the mutex
             pthread_mutex_unlock(&en_lpr[id]->m);
 

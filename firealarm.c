@@ -108,6 +108,9 @@ pthread_condattr_t c_shared;
 pthread_t *threads;
 pthread_mutex_t temp_mutex[5];
 
+pthread_t *emergency;
+pthread_mutex_t emerg_mutex;
+
 int lv_id[5];
 
 lv_t *lv[5];
@@ -261,15 +264,13 @@ int main() {
         pthread_create(threads + i, NULL, tempmonitor, (void *)&lv_id[i]);
     }
 
+    //pthread_create(emergency, NULL, trigger_emergency,)
 
-    for (;;) {
-        if (alarm_active) {
-            goto emergency_mode;
-        }
+    while(!alarm_active){
         usleep(1000);
+
     }
 
-emergency_mode:
     fprintf(stderr, "*** ALARM ACTIVE ***\n");
 
     // Handle the alarm system and open boom gates
@@ -277,6 +278,7 @@ emergency_mode:
     for (int i = 0; i < LEVELS; i++) {
         int addr = 0150 * i + 2498;
         char *alarm_trigger = (char *)ptr + addr;
+
         *alarm_trigger = 1;
     }
 
