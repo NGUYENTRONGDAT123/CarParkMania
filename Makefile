@@ -6,9 +6,9 @@ all: cars_demo
 
 cars_demo: manager.o simulator.o firealarm.o
 
-manager.o: manager.c
-
 simulator.o: simulator.c
+
+manager.o: manager.c
 
 firealarm: firealarm.c
 

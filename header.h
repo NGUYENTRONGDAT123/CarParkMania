@@ -42,8 +42,8 @@ typedef struct exit {
 
 typedef struct level {
     LPR_t lpr;
-    unsigned short temp;  // 2 bytes
-    char sign;
+    volatile unsigned short temp;  // 2 bytes
+    volatile char sign;
 } lv_t;
 
 typedef struct car {

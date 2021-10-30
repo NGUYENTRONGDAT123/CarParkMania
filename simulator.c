@@ -74,7 +74,6 @@ pthread_t *queuing_cars_exit;
 // for temperature
 int lv_id[5];
 pthread_t *temp_threads;
-pthread_mutex_t mutex_temp[5];
 
 // initalize hash tables for storing plates from txt
 bool store_plates() {
@@ -378,10 +377,8 @@ void *simulate_temp(void *arg) {
     int id = (*(int *)arg);
 
     for (;;) {
-        pthread_mutex_lock(&mutex_temp[id]);
         lv[id]->temp = rand() % 50 + 20;
         usleep((rand() % 5) * 1000);
-        pthread_mutex_unlock(&mutex_temp[id]);
     }
 }
 
@@ -481,9 +478,11 @@ void simulate_car_entering(car_t *car, int entrance_id) {
         // printf("Entrance %d is lowering the boomgate!\n", entrance_id + 1);
         en_bg[entrance_id]->s = 'L';
         usleep(10 * 1000);
+        pthread_mutex_unlock(&en_bg[entrance_id]->m);
         // signal finish lowering
         pthread_cond_signal(&en_bg[entrance_id]->c);
 
+        pthread_mutex_lock(&en_bg[entrance_id]->m);
         // wait for the gate to fully close
         pthread_cond_wait(&en_bg[entrance_id]->c, &en_bg[entrance_id]->m);
         add_car_simulation(car, ist[entrance_id]->s, &mutex_car, &cond_car);
@@ -611,9 +610,6 @@ int main(int argc, char **argv) {
         // mutexes and conds for queuing the entrance
         pthread_mutex_init(&mutex_car_ex[i], &m_shared);
         pthread_cond_init(&cond_car_ex[i], &c_shared);
-
-        // mutexes for temperature
-        pthread_mutex_init(&mutex_temp[i], &m_shared);
     }
 
     *(char *)(ptr + 2919) = 1;

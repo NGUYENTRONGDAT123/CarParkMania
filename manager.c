@@ -8,6 +8,7 @@
 
 #include "hashtable.c"
 // global variables
+int alarm_active = 0;
 
 // for segment
 int shm_fd;
@@ -54,6 +55,9 @@ pthread_cond_t cond_bill = PTHREAD_COND_INITIALIZER;
 int num_bill_tasks = 0;
 bill_task_t *bill_tasks = NULL;
 bill_task_t *last_bill_tasks = NULL;
+
+// for emergency
+pthread_t *check_temp_threads;
 
 // hash table
 htab_t h;          // for license plates
@@ -161,7 +165,6 @@ void *control_entrance(void *arg) {
         item_t *found_car = htab_find(&h, en_lpr[id]->license);
         // check the if license is whitelist
         if (found_car != NULL) {
-            printf("%s can be parked!\n", en_lpr[id]->license);
             // unlock the mutex
             pthread_mutex_unlock(&en_lpr[id]->m);
 
@@ -443,7 +446,7 @@ void *display(void *arg) {
         for (int i = 0; i < 5; i++) {
             printf("\n------------------------\n");
             printf("entrance id %d status: lpr:%s \t digital sign: %c \tboomgate: %c\n", i + 1, en_lpr[i]->license, ist[i]->s, en_bg[i]->s);
-            printf("level %d: lpr: %s \tcapacity: %d \t temperature: %d Celsisus \tStatus: %c \n", i + 1, lv_lpr[i]->license, num_lv[i], lv[i]->temp, lv[i]->sign);
+            printf("level %d: lpr: %s \tcapacity: %d \t temperature: %d Celsisus \tStatus: %d \n", i + 1, lv_lpr[i]->license, num_lv[i], lv[i]->temp, lv[i]->sign);
             printf("exit id %d status: lpr:%s \tboomgate: %c\n", i + 1, ex_lpr[i]->license, en_bg[i]->s);
             printf("------------------------\n");
         }
@@ -452,12 +455,38 @@ void *display(void *arg) {
         usleep(50 * 1000);  // sleep for 50ms
     }
 }
+// this is for emergency
+void *openboomgate(void *arg) {
+    int id = (*(int *)arg);
+    int addr = id * 288 + 96;
+    boomgate_t *bg = ptr + addr;
+    printf("boomgate #%d is: %c\n", id, bg->s);
+    for (;;) {
+        pthread_mutex_lock(&bg->m);
+        // printf("boomgate is: %c\n", bg->s);
+        usleep(10 * 1000);
+        bg->s = 'O';
+        pthread_mutex_unlock(&bg->m);
+    }
+}
+void *check_temp(void *arg) {
+    int id = (*(int *)arg);
+    char *sign = ptr + 104 * id + 2498;
+    for (;;) {
+        if ((*sign) == 1) {
+            // printf("I have awakened!\n");
+            alarm_active = 1;
+        }
+        usleep(1000);
+    }
+}
 
 // main function
 int main() {
     int en_id[ENTRANCES];
     int ex_id[EXITS];
     int lv_id[LEVELS];
+    int en_bg_id[ENTRANCES];
 
     // store plates from txt file
     store_plates();
@@ -489,6 +518,9 @@ int main() {
     // 5 threads for billing
     billing_thread = malloc(sizeof(pthread_t) * 5);
 
+    // 5 threads for checking the status of the temperature
+    check_temp_threads = malloc(sizeof(pthread_t) * LEVELS);
+
     // make sure the pthread mutex is sharable by creating attr
     pthread_mutexattr_init(&m_shared);
     pthread_mutexattr_setpshared(&m_shared, PTHREAD_PROCESS_SHARED);
@@ -517,6 +549,7 @@ int main() {
 
         // lv
         lv[i] = ptr + lv_addr;
+        lv[i]->sign = 0;
 
         printf("\nCREATING #%d\n", i + 1);
 
@@ -535,10 +568,9 @@ int main() {
         ex_id[i] = i;
         // exits threads
         pthread_create(exit_threads + i, NULL, control_exit, (void *)&ex_id[i]);
-        // testing
-        // pthread_create(testing_thread, NULL, testing, (void *)&en_id);
-
         pthread_create(billing_thread + i, NULL, handle_billing, NULL);
+
+        pthread_create(check_temp_threads + i, NULL, check_temp, (void *)&i);
     }
 
     display_thread = malloc(sizeof(pthread_t));
@@ -546,6 +578,16 @@ int main() {
 
     *(char *)(ptr + 2919) = 0;
     // wait until the manager change the process of then we can stop the manager
+
+    while ((*(char *)(ptr + 2919)) == 0) {
+        if (alarm_active) {
+            break;
+        }
+        usleep(1000);
+    };
+
+    fprintf(stderr, "*** ALARM ACTIVE ***\n");
+
     while ((*(char *)(ptr + 2919)) == 0) {
     };
 

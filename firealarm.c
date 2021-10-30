@@ -103,6 +103,7 @@ void *tempmonitor(void *arg) {
     int level = (*(int *)arg);
     struct tempnode *templist = NULL, *newtemp, *medianlist = NULL, *oldesttemp;
     int count, addr, temp, mediantemp, hightemps;
+    char *sign;
 
     for (;;) {
         // Calculate address of temperature sensor
@@ -157,14 +158,20 @@ void *tempmonitor(void *arg) {
             if (count == TEMPCHANGE_WINDOW) {
                 // If 90% of the last 30 temperatures are >= 58 degrees,
                 // this is considered a high temperature. Raise the alarm
-                if (hightemps >= TEMPCHANGE_WINDOW * 0.9)
+                if (hightemps >= TEMPCHANGE_WINDOW * 0.9) {
                     alarm_active = 1;
+                    sign = shm + addr + 2;
+                    *sign = 1;
+                }
 
                 // If the newest temp is >= 8 degrees higher than the oldest
                 // temp (out of the last 30), this is a high rate-of-rise.
                 // Raise the alarm
-                if (templist->temperature - oldesttemp->temperature >= 8)
+                if (templist->temperature - oldesttemp->temperature >= 8) {
                     alarm_active = 1;
+                    sign = shm + addr + 2;
+                    *sign = 1;
+                }
             }
         }
 
@@ -174,17 +181,18 @@ void *tempmonitor(void *arg) {
 
 void *openboomgate(void *arg) {
     struct boomgate *bg = arg;
-    pthread_mutex_lock(&bg->m);
     for (;;) {
+        pthread_mutex_lock(&bg->m);
         if (bg->s == 'C') {
             bg->s = 'R';
             pthread_cond_broadcast(&bg->c);
+            pthread_mutex_unlock(&bg->m);
         }
         if (bg->s == 'O') {
+            pthread_cond_wait(&bg->c, &bg->m);
         }
         pthread_cond_wait(&bg->c, &bg->m);
     }
-    pthread_mutex_unlock(&bg->m);
 }
 
 int main() {
