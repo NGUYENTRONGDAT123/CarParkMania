@@ -443,7 +443,7 @@ void *display(void *arg) {
         for (int i = 0; i < 5; i++) {
             printf("\n------------------------\n");
             printf("entrance id %d status: lpr:%s \t digital sign: %c \tboomgate: %c\n", i + 1, en_lpr[i]->license, ist[i]->s, en_bg[i]->s);
-            printf("level %d: lpr: %s \tcapacity: %d \t temperature: %d Celsisus\n", i + 1, lv_lpr[i]->license, num_lv[i], lv[i]->temp);
+            printf("level %d: lpr: %s \tcapacity: %d \t temperature: %d Celsisus \tStatus: %c \n", i + 1, lv_lpr[i]->license, num_lv[i], lv[i]->temp, lv[i]->sign);
             printf("exit id %d status: lpr:%s \tboomgate: %c\n", i + 1, ex_lpr[i]->license, en_bg[i]->s);
             printf("------------------------\n");
         }
