@@ -26,28 +26,13 @@ info_sign_t *ist[5];
 // lv
 lv_t *lv[5];
 
-// threads for entrance
-pthread_t *entrance_threads;
-pthread_t *testing_thread;
-
-// threads for level
-pthread_t *lv_lpr_threads;
-
-// threads for exit
-pthread_t *exit_threads;
-
-// thread for displaying
-pthread_t *display_thread;
-
-// thread for billing
-pthread_t *billing_thread;
-
 // attributes for mutex and cond
 pthread_mutexattr_t m_shared;
 pthread_condattr_t c_shared;
 
 // mutex and cond for displaying thread
 pthread_mutex_t mutex_display = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond_display = PTHREAD_COND_INITIALIZER;
 
 // mutex and cond for billing thread
 pthread_mutex_t mutex_bill = PTHREAD_MUTEX_INITIALIZER;
@@ -55,9 +40,6 @@ pthread_cond_t cond_bill = PTHREAD_COND_INITIALIZER;
 int num_bill_tasks = 0;
 bill_task_t *bill_tasks = NULL;
 bill_task_t *last_bill_tasks = NULL;
-
-// for emergency
-pthread_t *check_temp_threads;
 
 // hash table
 htab_t h;          // for license plates
@@ -208,6 +190,7 @@ void *control_entrance(void *arg) {
                 // wait for the simulation done raising
                 pthread_cond_wait(&en_bg[id]->c, &en_bg[id]->m);
                 en_bg[id]->s = 'O';
+
                 // after fully opened, wait for 20 ms
                 usleep(20 * 1000);
                 // signal to lower the gates
@@ -442,12 +425,16 @@ void *display(void *arg) {
         // status of each lpr, bg and ist
         pthread_mutex_lock(&mutex_display);
 
+        // if (alarm_active) {
+        //     pthread_cond_wait(&cond_display, &mutex_display);
+        // }
+
         printf("total cars: %d \t revenue:$%.2f", total_cars, revenue);
         for (int i = 0; i < 5; i++) {
             printf("\n------------------------\n");
             printf("entrance id %d status: lpr:%s \t digital sign: %c \tboomgate: %c\n", i + 1, en_lpr[i]->license, ist[i]->s, en_bg[i]->s);
             printf("level %d: lpr: %s \tcapacity: %d \t temperature: %d Celsisus \tStatus: %d \n", i + 1, lv_lpr[i]->license, num_lv[i], lv[i]->temp, lv[i]->sign);
-            printf("exit id %d status: lpr:%s \tboomgate: %c\n", i + 1, ex_lpr[i]->license, en_bg[i]->s);
+            printf("exit id %d status: lpr:%s \tboomgate: %c\n", i + 1, ex_lpr[i]->license, ex_bg[i]->s);
             printf("------------------------\n");
         }
         // htab_print(&h_billing);
@@ -456,19 +443,35 @@ void *display(void *arg) {
     }
 }
 // this is for emergency
-void *openboomgate(void *arg) {
+void *open_en_boomgate(void *arg) {
     int id = (*(int *)arg);
     int addr = id * 288 + 96;
     boomgate_t *bg = ptr + addr;
     printf("boomgate #%d is: %c\n", id, bg->s);
     for (;;) {
         pthread_mutex_lock(&bg->m);
-        // printf("boomgate is: %c\n", bg->s);
-        usleep(10 * 1000);
+        pthread_cond_wait(&bg->c, &bg->m);
         bg->s = 'O';
+        printf("boomgate #%d second is: %c\n", id, bg->s);
         pthread_mutex_unlock(&bg->m);
     }
 }
+
+// this is for emergency
+void *open_ex_boomgate(void *arg) {
+    int id = (*(int *)arg);
+    int addr = id * 192 + 1536;
+    boomgate_t *bg = ptr + addr;
+    printf("boomgate #%d is: %c\n", id, bg->s);
+    for (;;) {
+        pthread_mutex_lock(&bg->m);
+        pthread_cond_wait(&bg->c, &bg->m);
+        bg->s = 'O';
+        printf("boomgate #%d second is: %c\n", id, bg->s);
+        pthread_mutex_unlock(&bg->m);
+    }
+}
+
 void *check_temp(void *arg) {
     int id = (*(int *)arg);
     char *sign = ptr + 104 * id + 2498;
@@ -487,6 +490,28 @@ int main() {
     int ex_id[EXITS];
     int lv_id[LEVELS];
     int en_bg_id[ENTRANCES];
+    int ex_bg_id[EXITS];
+
+    // threads for entrance
+    pthread_t *entrance_threads;
+    pthread_t *testing_thread;
+
+    // threads for level
+    pthread_t *lv_lpr_threads;
+
+    // threads for exit
+    pthread_t *exit_threads;
+
+    // thread for displaying
+    pthread_t *display_thread;
+
+    // thread for billing
+    pthread_t *billing_thread;
+
+    // for emergency
+    pthread_t *check_temp_threads;
+    pthread_t *en_bg_threads;
+    pthread_t *ex_bg_threads;
 
     // store plates from txt file
     store_plates();
@@ -574,6 +599,7 @@ int main() {
     }
 
     display_thread = malloc(sizeof(pthread_t));
+    pthread_cond_init(&cond_display, &c_shared);
     pthread_create(display_thread, NULL, display, NULL);
 
     *(char *)(ptr + 2919) = 0;
@@ -587,6 +613,20 @@ int main() {
     };
 
     fprintf(stderr, "*** ALARM ACTIVE ***\n");
+
+    en_bg_threads = malloc(sizeof(pthread_t) * ENTRANCES);
+    for (int i = 0; i < ENTRANCES; i++) {
+        en_bg_id[i] = i;
+        printf("%d\n", en_bg_id[i]);
+        pthread_create(en_bg_threads + i, NULL, open_en_boomgate, (void *)&en_bg_id[i]);
+    }
+
+    ex_bg_threads = malloc(sizeof(pthread_t) * ENTRANCES);
+    for (int i = 0; i < EXITS; i++) {
+        ex_bg_id[i] = i;
+        printf("%d\n", en_bg_id[i]);
+        pthread_create(ex_bg_threads + i, NULL, open_ex_boomgate, (void *)&en_bg_id[i]);
+    }
 
     while ((*(char *)(ptr + 2919)) == 0) {
     };

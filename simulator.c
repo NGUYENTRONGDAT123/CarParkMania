@@ -37,15 +37,10 @@ info_sign_t *ist[5];
 lv_t *lv[5];
 
 // for creating random liceneses
-pthread_t *generate_car;
 const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const char number[] = "1234567890";
 char temp[6];
 char *license_plate[100];
-
-// attributes for mutex and cond
-pthread_mutexattr_t m_shared;
-pthread_condattr_t c_shared;
 
 // for simulation thread pool
 pthread_mutex_t mutex_car;
@@ -53,7 +48,6 @@ pthread_cond_t cond_car;
 car_t *cars = NULL;     /* head of linked list of requests. */
 car_t *last_car = NULL; /* pointer to last request.         */
 int num_car = 0;
-pthread_t *simulate_car;
 
 // for queuing cars at the entrance
 int num_car_entrance[5];
@@ -61,7 +55,6 @@ car_t *cars_en[5];
 car_t *last_car_en[5];
 pthread_mutex_t mutex_car_en[5];
 pthread_cond_t cond_car_en[5];
-pthread_t *queuing_cars_entrance;
 
 // for queuing cars at the exit
 int num_car_exit[5];
@@ -69,11 +62,9 @@ car_t *cars_ex[5];
 car_t *last_car_ex[5];
 pthread_mutex_t mutex_car_ex[5];
 pthread_cond_t cond_car_ex[5];
-pthread_t *queuing_cars_exit;
 
 // for temperature
 int lv_id[5];
-pthread_t *temp_threads;
 
 // initalize hash tables for storing plates from txt
 bool store_plates() {
@@ -461,7 +452,7 @@ void simulate_car_entering(car_t *car, int entrance_id) {
         // this car is removed
         pthread_mutex_unlock(&ist[entrance_id]->m);
 
-    } else {
+    } else if (ist[entrance_id]->s > 48 && ist[entrance_id]->s < 54) {
         // printf("this car can be parked on level %c! \n", ist[entrance_id]->s);
         pthread_mutex_unlock(&ist[entrance_id]->m);
 
@@ -478,16 +469,15 @@ void simulate_car_entering(car_t *car, int entrance_id) {
         // printf("Entrance %d is lowering the boomgate!\n", entrance_id + 1);
         en_bg[entrance_id]->s = 'L';
         usleep(10 * 1000);
-        pthread_mutex_unlock(&en_bg[entrance_id]->m);
-        // signal finish lowering
         pthread_cond_signal(&en_bg[entrance_id]->c);
 
-        pthread_mutex_lock(&en_bg[entrance_id]->m);
         // wait for the gate to fully close
         pthread_cond_wait(&en_bg[entrance_id]->c, &en_bg[entrance_id]->m);
         add_car_simulation(car, ist[entrance_id]->s, &mutex_car, &cond_car);
         // printf("Entrance  %d: %c\n", entrance_id + 1, en_bg[entrance_id]->s);
         pthread_mutex_unlock(&en_bg[entrance_id]->m);
+    } else {
+        pthread_mutex_unlock(&ist[entrance_id]->m);
     }
 }
 
@@ -531,7 +521,23 @@ void *generate_car_handler(void *arg) {
     }
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Usage: ./simulator [SIMULATION TIME]\n");
+        exit(1);
+    }
+
+    // attributes for mutex and cond
+    pthread_mutexattr_t m_shared;
+    pthread_condattr_t c_shared;
+
+    // for creating random liceneses
+    pthread_t *generate_car;
+    pthread_t *simulate_car;
+    pthread_t *queuing_cars_entrance;
+    pthread_t *queuing_cars_exit;
+    pthread_t *temp_threads;
+
     int generate_id = 1;
     int thread_id = 1;
     int en_id[ENTRANCES];
@@ -651,7 +657,7 @@ int main(int argc, char **argv) {
     pthread_create(generate_car, NULL, generate_car_handler, (void *)&generate_id);
     // }
 
-    sleep(20);
+    sleep(atoi(argv[1]));
     *(char *)(ptr + 2919) = 1;
 
     // destroy the segment
@@ -666,6 +672,7 @@ int main(int argc, char **argv) {
     free(simulate_car);
     free(queuing_cars_entrance);
     free(queuing_cars_exit);
+    free(temp_threads);
 
     // destroy mutex and cond attributes
     pthread_mutexattr_destroy(&m_shared);

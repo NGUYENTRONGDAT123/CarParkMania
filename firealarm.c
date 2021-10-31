@@ -1,51 +1,3 @@
-/*
-OVERVIEW
-    Monitor the status of temperature sensors on each car park level
-
-    When a fire is detected, activate alarms on every car park level,
-    open all boom gates and display a an evacuation message on the information signs
-
-TIMINGS
-    The fire alarm system will collect temperature readings every 2ms for the purpose of
-    determining if a fire has occurred
-
-    Once the fire alarm system is active, the character 'E' will be displayed on every digital
-    sign in the parking lot. 20ms later, the will show 'V', then 'A', 'C', 'U', 'A', 'T', 'E', ' ',
-    then looping back to the first E again
-
-GENERAL
-    Current temperature is returned as a signed 16-bit integer
-
-    Due to noise and faults, the temperature sensor must smooth the data its receiving:
-        For each temperature sensor, the monitor will store the temperature value read from
-        that sensor every 2ms. Out of the 5 most recent temp readings, the median temp will be
-        recorded as the 'smoothed' reading for that sensor e.g.
-
-            Raw     32   30   30   29   30   40   36   32   31   29   28
-            Smooth  N/A  N/A  N/A  N/A  30   30   30   32   32   32   31
-
-        The 30 most recent smoothed temps are then analysed (before 30 smoothed readings -
-        34 total readings - the fire alarm system cannot use that sensor).
-
-
-    FIRE DETECTION
-    The system uses two approaches to determine the presence of a fire. If either of these
-    approaches detects a fire, the alarm is triggered
-
-        Fixed temperature fire detection
-            Out of the 30 most recent smoothed temps produced. if 90% of them are 58 degrees
-            or higher, the temp is considered high enough that there must be a fire
-
-        Rate-of-rise fire detection
-            Out of the 30 most recent smoothed temps produced, if the most recent temp is
-            8 degrees (or more) hotter than the 30th most recent temp, the temp is considered
-            to be growing at a fast enough rate that there must be a afire.
-
-        For testing and demonstration purposes, your simulator should have the ability to
-        account for both of these scenarios, to ensure that both successfully trigger the alarm
-
-*/
-
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -179,23 +131,46 @@ void *tempmonitor(void *arg) {
     }
 }
 
-void *openboomgate(void *arg) {
-    struct boomgate *bg = arg;
+void *open_en_boomgate(void *arg) {
+    // struct boomgate *bg = arg;
+    int i = *((int *)arg);
+    struct boomgate *bg = shm + 288 * i + 96;
+
     for (;;) {
         pthread_mutex_lock(&bg->m);
-        if (bg->s == 'C') {
+        if (bg->s != 'O') {
             bg->s = 'R';
-            pthread_cond_broadcast(&bg->c);
             pthread_mutex_unlock(&bg->m);
-        }
-        if (bg->s == 'O') {
+            pthread_cond_broadcast(&bg->c);
+        } else {
+            printf("Entrance boomgate %d is: %c\n", i + 1, bg->s);
             pthread_cond_wait(&bg->c, &bg->m);
         }
-        pthread_cond_wait(&bg->c, &bg->m);
+    }
+}
+
+void *open_ex_boomgate(void *arg) {
+    // struct boomgate *bg = arg;
+    int i = *((int *)arg);
+    struct boomgate *bg = shm + 192 * i + 1536;
+
+    for (;;) {
+        pthread_mutex_lock(&bg->m);
+        if (bg->s != 'O') {
+            bg->s = 'R';
+            pthread_mutex_unlock(&bg->m);
+            pthread_cond_broadcast(&bg->c);
+        } else {
+            printf("Exit boomgate %d is: %c\n", i + 1, bg->s);
+            pthread_cond_wait(&bg->c, &bg->m);
+        }
     }
 }
 
 int main() {
+    int en_id[ENTRANCES];
+    int ex_id[EXITS];
+
     shm_fd = shm_open("PARKING", O_RDWR, 0);
     shm = (void *)mmap(0, 2920, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
 
@@ -225,14 +200,17 @@ emergency_mode:
     // Open up all boom gates
     pthread_t *boomgatethreads = malloc(sizeof(pthread_t) * (ENTRANCES + EXITS));
     for (int i = 0; i < ENTRANCES; i++) {
-        int addr = 288 * i + 96;
-        struct boomgate *bg = shm + addr;
-        pthread_create(boomgatethreads + i, NULL, openboomgate, bg);
+        en_id[i] = i;
+        // printf("%d\n", en_id[i]);
+        // int addr = 288 * i + 96;
+        // struct boomgate *bg = shm + addr;
+        pthread_create(boomgatethreads + i, NULL, open_en_boomgate, (void *)&en_id[i]);
     }
     for (int i = 0; i < EXITS; i++) {
-        int addr = 192 * i + 1536;
-        struct boomgate *bg = shm + addr;
-        pthread_create(boomgatethreads + ENTRANCES + i, NULL, openboomgate, bg);
+        ex_id[i] = i;
+        // int addr = 192 * i + 1536;
+        // struct boomgate *bg = shm + addr;
+        pthread_create(boomgatethreads + ENTRANCES + i, NULL, open_ex_boomgate, (void *)&ex_id[i]);
     }
 
     // Show evacuation message on an endless loop
