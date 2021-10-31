@@ -16,7 +16,7 @@
 // Therefore, each bucket is a linked list of items that hashes to that bucket.
 
 void item_print(item_t *i) {
-    printf("key=%s value=%f", i->key, i->value);
+    printf("key=%s value=%Lf", i->key, i->value);
 }
 
 // A hash table mapping a string to an integer.
@@ -80,7 +80,7 @@ item_t *htab_find(htab_t *h, char *key) {
 // pre: htab_find(h, key) == NULL
 // post: (return == false AND allocation of new item failed)
 //       OR (htab_find(h, key) != NULL)
-bool htab_add(htab_t *h, char *key, double value) {
+bool htab_add(htab_t *h, char *key, long double value) {
     // allocate new item
     item_t *newhead = (item_t *)malloc(sizeof(item_t));
     if (newhead == NULL) {
@@ -88,6 +88,23 @@ bool htab_add(htab_t *h, char *key, double value) {
     }
     newhead->key = key;
     newhead->value = value;
+
+    // hash key and place item in appropriate bucket
+    size_t bucket = htab_index(h, key);
+    newhead->next = h->buckets[bucket];
+    h->buckets[bucket] = newhead;
+    return true;
+}
+
+// hash table only for cars with the time when entrance lpr started to read its license
+bool htab_add_billing(htab_t *h, char *key, struct timeval start_time) {
+    item_t *
+        newhead = (item_t *)malloc(sizeof(item_t));
+    if (newhead == NULL) {
+        return false;
+    }
+    newhead->key = key;
+    newhead->start_time = start_time;
 
     // hash key and place item in appropriate bucket
     size_t bucket = htab_index(h, key);

@@ -55,7 +55,8 @@ typedef struct car {
 typedef struct item item_t;
 struct item {
     char *key;
-    double value;
+    long double value;
+    struct timeval start_time;
     item_t *next;
 };
 

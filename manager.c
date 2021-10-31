@@ -176,9 +176,9 @@ void *control_entrance(void *arg) {
                 }
                 ist[id]->s = i + 49;
 
-                clock_t t1;
-                t1 = clock();
-                htab_add(&h_billing, found_car->key, t1);
+                struct timeval start_time;
+                gettimeofday(&start_time, 0);
+                htab_add_billing(&h_billing, found_car->key, start_time);
 
                 // unlock the mutex of the ist
                 pthread_mutex_unlock(&ist[id]->m);
@@ -283,9 +283,11 @@ void billing(bill_task_t *a_task) {
 
     item_t *car = a_task->car;
 
-    clock_t t2;
-    t2 = clock();
-    double bill = ((double)t2 - car->value) / CLOCKS_PER_SEC * 1000 * 0.05;
+    struct timeval start_time = car->start_time;
+    struct timeval current;
+    gettimeofday(&current, 0);
+    // bill
+    float bill = (floor((float)(current.tv_sec - start_time.tv_sec) * 1000.0f + (current.tv_usec - start_time.tv_usec) / 1000.0f)) * 0.05;
 
     revenue += bill;
 
@@ -445,12 +447,12 @@ void *display(void *arg) {
 // this is for emergency
 void *open_en_boomgate(void *arg) {
     int id = *((int *)arg);
-    printf("boomgate #%d is: %c\n", id, en_bg[id]->s);
+    // printf("boomgate #%d is: %c\n", id, en_bg[id]->s);
     for (;;) {
         pthread_mutex_lock(&en_bg[id]->m);
         pthread_cond_wait(&en_bg[id]->c, &en_bg[id]->m);
         en_bg[id]->s = 'O';
-        printf("boomgate #%d second is: %c\n", id, en_bg[id]->s);
+        // printf("boomgate #%d second is: %c\n", id, en_bg[id]->s);
         pthread_mutex_unlock(&en_bg[id]->m);
     }
 }
@@ -458,12 +460,12 @@ void *open_en_boomgate(void *arg) {
 // this is for emergency
 void *open_ex_boomgate(void *arg) {
     int id = *((int *)arg);
-    printf("boomgate #%d is: %c\n", id, ex_bg[id]->s);
+    // printf("boomgate #%d is: %c\n", id, ex_bg[id]->s);
     for (;;) {
         pthread_mutex_lock(&ex_bg[id]->m);
         pthread_cond_wait(&ex_bg[id]->c, &ex_bg[id]->m);
         ex_bg[id]->s = 'O';
-        printf("boomgate #%d second is: %c\n", id, ex_bg[id]->s);
+        // printf("boomgate #%d second is: %c\n", id, ex_bg[id]->s);
         pthread_mutex_unlock(&ex_bg[id]->m);
     }
 }

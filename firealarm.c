@@ -138,13 +138,15 @@ void *open_en_boomgate(void *arg) {
 
     for (;;) {
         pthread_mutex_lock(&bg->m);
-        if (bg->s != 'O') {
+        if (bg->s == 'C') {
             bg->s = 'R';
             pthread_mutex_unlock(&bg->m);
             pthread_cond_broadcast(&bg->c);
-        } else {
+        } else if (bg->s == 'O') {
             printf("Entrance boomgate %d is: %c\n", i + 1, bg->s);
             pthread_cond_wait(&bg->c, &bg->m);
+        } else {
+            pthread_mutex_unlock(&bg->m);
         }
     }
 }
