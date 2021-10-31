@@ -456,20 +456,20 @@ void *display(void *arg) {
         usleep(50 * 1000);  // sleep for 50ms
     }
 }
-// this is for emergency
-void *openboomgate(void *arg) {
-    int id = (*(int *)arg);
-    int addr = id * 288 + 96;
-    boomgate_t *bg = ptr + addr;
-    printf("boomgate #%d is: %c\n", id, bg->s);
-    for (;;) {
-        pthread_mutex_lock(&bg->m);
-        // printf("boomgate is: %c\n", bg->s);
-        usleep(10 * 1000);
-        bg->s = 'O';
-        pthread_mutex_unlock(&bg->m);
-    }
-}
+// // this is for emergency
+// void *openboomgate(void *arg) {
+//     int id = (*(int *)arg);
+//     int addr = id * 288 + 96;
+//     boomgate_t *bg = ptr + addr;
+//     printf("boomgate #%d is: %c\n", id, bg->s);
+//     for (;;) {
+//         pthread_mutex_lock(&bg->m);
+//         // printf("boomgate is: %c\n", bg->s);
+//         usleep(10 * 1000);
+//         bg->s = 'O';
+//         pthread_mutex_unlock(&bg->m);
+//     }
+// }
 void *check_temp(void *arg) {
     int id = (*(int *)arg);
     char *sign = ptr + 104 * id + 2498;

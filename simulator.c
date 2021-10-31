@@ -328,7 +328,7 @@ void handle_a_car_simulation(car_t *car) {
     pthread_mutex_unlock(&lv_lpr->m);
 
     // park there for random time
-    int rd_time = ((rand() % (9901))) * 1000;
+    int rd_time = (((rand() % 9901) + 100) * 1000);
 
     usleep(rd_time);
 
@@ -632,18 +632,19 @@ int main(int argc, char **argv) {
         thread_id++;
     }
 
-    temp_threads = malloc(sizeof(pthread_t) * 5);
-    // create threads for temperature
-    for (int i = 0; i < LEVELS; i++) {
-        lv_id[i] = i;
-        pthread_create(temp_threads + i, NULL, simulate_temp, (void *)&lv_id[i]);
-    }
 
     queuing_cars_entrance = malloc(sizeof(pthread_t) * 5);
     // create threads for queuing cars at the entrance
     for (int i = 0; i < 5; i++) {
         en_id[i] = i;
         pthread_create(queuing_cars_entrance + i, NULL, simulate_car_entering_handler, (void *)&en_id[i]);
+    }
+
+    temp_threads = malloc(sizeof(pthread_t) * 5);
+    // create threads for temperature
+    for (int i = 0; i < LEVELS; i++) {
+        lv_id[i] = i;
+        pthread_create(temp_threads + i, NULL, simulate_temp, (void *)&lv_id[i]);
     }
 
     generate_car = malloc(sizeof(pthread_t) * 1);

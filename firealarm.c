@@ -59,6 +59,7 @@ int16_t shm_fd;
 void *shm;
 
 int8_t alarm_active = 0;
+int8_t finished = 0;
 pthread_mutex_t alarm_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t alarm_condvar = PTHREAD_COND_INITIALIZER;
 
@@ -101,7 +102,10 @@ int compare(const void *first, const void *second) {
 
 void *tempmonitor(void *arg) {
     int16_t level = (*(int *)arg);
-    struct tempnode *templist = NULL, *newtemp, *medianlist = NULL, *oldesttemp;
+    struct tempnode *templist = NULL;
+    struct tempnode *newtemp;
+    struct tempnode *medianlist = NULL;
+    struct tempnode *oldesttemp;
     int16_t count;
     int16_t addr;
     int16_t temp;
@@ -172,6 +176,8 @@ void *tempmonitor(void *arg) {
                 // temp (out of the last 30), this is a high rate-of-rise.
                 // Raise the alarm
                 if (templist->temperature - oldesttemp->temperature >= 8) {
+                    printf("alarm 1\n");
+
                     alarm_active = 1;
                     sign = shm + addr + 2;
                     *sign = 1;
@@ -187,45 +193,47 @@ void *openboomgate(void *arg) {
     struct boomgate *bg = arg;
     for (;;) {
         pthread_mutex_lock(&bg->m);
-        if (bg->s == 'C') {
-            bg->s = 'R';
-            pthread_cond_broadcast(&bg->c);
+        if (bg->s != 'O') {
+            bg->s = 'O';
+            pthread_cond_signal(&bg->c);
             pthread_mutex_unlock(&bg->m);
         }
         if (bg->s == 'O') {
             pthread_cond_wait(&bg->c, &bg->m);
         }
         pthread_cond_wait(&bg->c, &bg->m);
+
     }
 }
 
-int main() {
-    printf("STARTING ALARM");
-
+int main(int argc, char **argv) {
     shm_fd = shm_open("PARKING", O_RDWR, 0);
-    shm = (void *)mmap(0, 2920, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
 
+    shm = (void *)mmap(0, 2920, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    alarm_active = 0;
     pthread_t *threads = malloc(sizeof(pthread_t) * LEVELS);
 
     for (int8_t i = 0; i < LEVELS; i++) {
         pthread_create(threads + i, NULL, tempmonitor, (void *)&i);
     }
     
-    printf("WAITING FOR ALARM");
-    while (!alarm_active){
+    printf("WAITING FOR ALARM\n");
+    while (!alarm_active & !finished){
         usleep(1000);
-        if (*(char *)(shm + 2919) == 1){
-            printf("SIMULATOR FINISHED");
-            break;
+        if (*(char *)(shm + 2919) == 2){
+            finished = 1;
+
+            printf("SIMULATOR FINISHED\n");
         }
     }
+
     
     if (alarm_active){
         fprintf(stderr, "*** ALARM ACTIVE ***\n");
 
         // Handle the alarm system and open boom gates
         // Activate alarms on all levels
-        for (uint8_t i = 0u; i < LEVELS; i++) {
+        for (int8_t i = 0; i < LEVELS; i++) {
             int16_t addr = 0150 * i + 2498;
             char *alarm_trigger = (char *)shm + addr;
             *alarm_trigger = 1;
@@ -233,12 +241,12 @@ int main() {
 
         // Open up all boom gates
         pthread_t *boomgatethreads = malloc(sizeof(pthread_t) * (ENTRANCES + EXITS));
-        for (uint8_t i = 0u; i < ENTRANCES; i++) {
+        for (int8_t i = 0; i < ENTRANCES; i++) {
             int16_t addr = 288 * i + 96;
             struct boomgate *bg = shm + addr;
             pthread_create(boomgatethreads + i, NULL, openboomgate, bg);
         }
-        for (uint8_t i = 0u; i < EXITS; i++) {
+        for (int8_t i = 0; i < EXITS; i++) {
             int16_t addr = 192 * i + 1536;
             struct boomgate *bg = shm + addr;
             pthread_create(boomgatethreads + ENTRANCES + i, NULL, openboomgate, bg);
@@ -248,7 +256,7 @@ int main() {
         for (;;) {
             char *evacmessage = "EVACUATE ";
             for (char *p = evacmessage; *p != '\0'; p++) {
-                for (uint8_t i = 0u; i < ENTRANCES; i++) {
+                for (int8_t i = 0; i < ENTRANCES; i++) {
                     int16_t addr = 288 * i + 192;
                     struct parkingsign *sign = shm + addr;
                     pthread_mutex_lock(&sign->m);
@@ -257,20 +265,19 @@ int main() {
                     pthread_mutex_unlock(&sign->m);
                 }
                 usleep(20000);
-                if (*(char *)(shm + 2919) == 1){
+                
+            }
+            if (*(char *)(shm + 2919) == 2){
                     break;
                     free(boomgatethreads);
-                }
             }
         }
     }
     
-    printf("Alarm off");
-    for (uint8_t i = 0u; i < LEVELS; i++) {
+    printf("Alarm off\n");
+    for (int8_t i = 0; i < LEVELS; i++) {
         pthread_join(threads[i], NULL);
     }
-
-    free(threads);
 
     munmap((void *)shm, 2920);
     close(shm_fd);

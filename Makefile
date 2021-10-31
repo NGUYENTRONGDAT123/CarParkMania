@@ -1,18 +1,19 @@
 CC = gcc
-CFLAGS = -Wall -pedantic #Show all ressaonable warnings
-LDFLAGS = 
+LINKERFLAG = -lrt -lpthread -lm 
+
 
 all: cars_demo
 
-cars_demo: manager.o simulator.o firealarm.o
+cars_demo: simulator manager firealarm
 
-simulator.o: simulator.c
+simulator: simulator.c
+	${CC} simulator.c -o simulator ${LINKERFLAG}
 
-manager.o: manager.c
+manager: manager.c
+	${CC} manager.c -o manager ${LINKERFLAG}
 
 firealarm: firealarm.c
+	${CC} firealarm.c -o firealarm ${LINKERFLAG}
 
 clean: 
-	rm -f cars_demo *.o
-
-.PHONY: all clean
+	rm -f simulator manager firealarm
