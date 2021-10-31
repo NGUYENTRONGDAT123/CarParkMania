@@ -444,31 +444,27 @@ void *display(void *arg) {
 }
 // this is for emergency
 void *open_en_boomgate(void *arg) {
-    int id = (*(int *)arg);
-    int addr = id * 288 + 96;
-    boomgate_t *bg = ptr + addr;
-    printf("boomgate #%d is: %c\n", id, bg->s);
+    int id = *((int *)arg);
+    printf("boomgate #%d is: %c\n", id, en_bg[id]->s);
     for (;;) {
-        pthread_mutex_lock(&bg->m);
-        pthread_cond_wait(&bg->c, &bg->m);
-        bg->s = 'O';
-        printf("boomgate #%d second is: %c\n", id, bg->s);
-        pthread_mutex_unlock(&bg->m);
+        pthread_mutex_lock(&en_bg[id]->m);
+        pthread_cond_wait(&en_bg[id]->c, &en_bg[id]->m);
+        en_bg[id]->s = 'O';
+        printf("boomgate #%d second is: %c\n", id, en_bg[id]->s);
+        pthread_mutex_unlock(&en_bg[id]->m);
     }
 }
 
 // this is for emergency
 void *open_ex_boomgate(void *arg) {
-    int id = (*(int *)arg);
-    int addr = id * 192 + 1536;
-    boomgate_t *bg = ptr + addr;
-    printf("boomgate #%d is: %c\n", id, bg->s);
+    int id = *((int *)arg);
+    printf("boomgate #%d is: %c\n", id, ex_bg[id]->s);
     for (;;) {
-        pthread_mutex_lock(&bg->m);
-        pthread_cond_wait(&bg->c, &bg->m);
-        bg->s = 'O';
-        printf("boomgate #%d second is: %c\n", id, bg->s);
-        pthread_mutex_unlock(&bg->m);
+        pthread_mutex_lock(&ex_bg[id]->m);
+        pthread_cond_wait(&ex_bg[id]->c, &ex_bg[id]->m);
+        ex_bg[id]->s = 'O';
+        printf("boomgate #%d second is: %c\n", id, ex_bg[id]->s);
+        pthread_mutex_unlock(&ex_bg[id]->m);
     }
 }
 
@@ -625,7 +621,7 @@ int main() {
     for (int i = 0; i < EXITS; i++) {
         ex_bg_id[i] = i;
         printf("%d\n", en_bg_id[i]);
-        pthread_create(ex_bg_threads + i, NULL, open_ex_boomgate, (void *)&en_bg_id[i]);
+        pthread_create(ex_bg_threads + i, NULL, open_ex_boomgate, (void *)&ex_bg_id[i]);
     }
 
     while ((*(char *)(ptr + 2919)) == 0) {

@@ -319,7 +319,7 @@ void handle_a_car_simulation(car_t *car) {
     pthread_mutex_unlock(&lv_lpr->m);
 
     // park there for random time
-    int rd_time = ((rand() % (9901))) * 1000;
+    int rd_time = (100 + (rand() % (9901))) * 1000;
 
     usleep(rd_time);
 
@@ -658,6 +658,7 @@ int main(int argc, char *argv[]) {
     // }
 
     sleep(atoi(argv[1]));
+    // sleep(40);
     *(char *)(ptr + 2919) = 1;
 
     // destroy the segment
