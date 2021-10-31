@@ -52,13 +52,13 @@ GENERAL
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/types.h>
-#include <time.h>
 #include <unistd.h>
+#include <stdint.h>
 
-int shm_fd;
+int16_t shm_fd;
 void *shm;
 
-int alarm_active = 0;
+int8_t alarm_active = 0;
 pthread_mutex_t alarm_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t alarm_condvar = PTHREAD_COND_INITIALIZER;
 
@@ -81,11 +81,11 @@ struct parkingsign {
 };
 
 struct tempnode {
-    int temperature;
+    int16_t temperature;
     struct tempnode *next;
 };
 
-struct tempnode *deletenodes(struct tempnode *templist, int after) {
+struct tempnode *deletenodes(struct tempnode *templist, int16_t after) {
     if (templist->next) {
         templist->next = deletenodes(templist->next, after - 1);
     }
@@ -100,9 +100,13 @@ int compare(const void *first, const void *second) {
 }
 
 void *tempmonitor(void *arg) {
-    int level = (*(int *)arg);
+    int16_t level = (*(int *)arg);
     struct tempnode *templist = NULL, *newtemp, *medianlist = NULL, *oldesttemp;
-    int count, addr, temp, mediantemp, hightemps;
+    int16_t count;
+    int16_t addr;
+    int16_t temp;
+    int16_t mediantemp;
+    int16_t hightemps;
     char *sign;
 
     for (;;) {
@@ -126,7 +130,7 @@ void *tempmonitor(void *arg) {
         }
 
         if (count == MEDIAN_WINDOW) {  // Temperatures are only counted once we have 5 samples
-            int *sorttemp = malloc(sizeof(int) * MEDIAN_WINDOW);
+            int *sorttemp = malloc(sizeof(int16_t) * MEDIAN_WINDOW);
             count = 0;
             for (struct tempnode *t = templist; t != NULL; t = t->next) {
                 sorttemp[count++] = t->temperature;
@@ -196,65 +200,80 @@ void *openboomgate(void *arg) {
 }
 
 int main() {
+    printf("STARTING ALARM");
+
     shm_fd = shm_open("PARKING", O_RDWR, 0);
     shm = (void *)mmap(0, 2920, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
 
     pthread_t *threads = malloc(sizeof(pthread_t) * LEVELS);
 
-    for (int i = 0; i < LEVELS; i++) {
+    for (int8_t i = 0; i < LEVELS; i++) {
         pthread_create(threads + i, NULL, tempmonitor, (void *)&i);
     }
-    for (;;) {
-        if (alarm_active) {
-            goto emergency_mode;
-        }
+    
+    printf("WAITING FOR ALARM");
+    while (!alarm_active){
         usleep(1000);
-    }
-
-emergency_mode:
-    fprintf(stderr, "*** ALARM ACTIVE ***\n");
-
-    // Handle the alarm system and open boom gates
-    // Activate alarms on all levels
-    for (int i = 0; i < LEVELS; i++) {
-        int addr = 0150 * i + 2498;
-        char *alarm_trigger = (char *)shm + addr;
-        *alarm_trigger = 1;
-    }
-
-    // Open up all boom gates
-    pthread_t *boomgatethreads = malloc(sizeof(pthread_t) * (ENTRANCES + EXITS));
-    for (int i = 0; i < ENTRANCES; i++) {
-        int addr = 288 * i + 96;
-        struct boomgate *bg = shm + addr;
-        pthread_create(boomgatethreads + i, NULL, openboomgate, bg);
-    }
-    for (int i = 0; i < EXITS; i++) {
-        int addr = 192 * i + 1536;
-        struct boomgate *bg = shm + addr;
-        pthread_create(boomgatethreads + ENTRANCES + i, NULL, openboomgate, bg);
-    }
-
-    // Show evacuation message on an endless loop
-    for (;;) {
-        char *evacmessage = "EVACUATE ";
-        for (char *p = evacmessage; *p != '\0'; p++) {
-            for (int i = 0; i < ENTRANCES; i++) {
-                int addr = 288 * i + 192;
-                struct parkingsign *sign = shm + addr;
-                pthread_mutex_lock(&sign->m);
-                sign->display = *p;
-                pthread_cond_broadcast(&sign->c);
-                pthread_mutex_unlock(&sign->m);
-            }
-            usleep(20000);
+        if (*(char *)(shm + 2919) == 1){
+            printf("SIMULATOR FINISHED");
+            break;
         }
     }
+    
+    if (alarm_active){
+        fprintf(stderr, "*** ALARM ACTIVE ***\n");
 
-    for (int i = 0; i < LEVELS; i++) {
+        // Handle the alarm system and open boom gates
+        // Activate alarms on all levels
+        for (uint8_t i = 0u; i < LEVELS; i++) {
+            int16_t addr = 0150 * i + 2498;
+            char *alarm_trigger = (char *)shm + addr;
+            *alarm_trigger = 1;
+        }
+
+        // Open up all boom gates
+        pthread_t *boomgatethreads = malloc(sizeof(pthread_t) * (ENTRANCES + EXITS));
+        for (uint8_t i = 0u; i < ENTRANCES; i++) {
+            int16_t addr = 288 * i + 96;
+            struct boomgate *bg = shm + addr;
+            pthread_create(boomgatethreads + i, NULL, openboomgate, bg);
+        }
+        for (uint8_t i = 0u; i < EXITS; i++) {
+            int16_t addr = 192 * i + 1536;
+            struct boomgate *bg = shm + addr;
+            pthread_create(boomgatethreads + ENTRANCES + i, NULL, openboomgate, bg);
+        }
+
+        // Show evacuation message on an endless loop
+        for (;;) {
+            char *evacmessage = "EVACUATE ";
+            for (char *p = evacmessage; *p != '\0'; p++) {
+                for (uint8_t i = 0u; i < ENTRANCES; i++) {
+                    int16_t addr = 288 * i + 192;
+                    struct parkingsign *sign = shm + addr;
+                    pthread_mutex_lock(&sign->m);
+                    sign->display = *p;
+                    pthread_cond_broadcast(&sign->c);
+                    pthread_mutex_unlock(&sign->m);
+                }
+                usleep(20000);
+                if (*(char *)(shm + 2919) == 1){
+                    break;
+                    free(boomgatethreads);
+                }
+            }
+        }
+    }
+    
+    printf("Alarm off");
+    for (uint8_t i = 0u; i < LEVELS; i++) {
         pthread_join(threads[i], NULL);
     }
 
+    free(threads);
+
     munmap((void *)shm, 2920);
     close(shm_fd);
+
+    return 0;
 }

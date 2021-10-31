@@ -445,9 +445,10 @@ void *display(void *arg) {
         printf("total cars: %d \t revenue:$%.2f", total_cars, revenue);
         for (int i = 0; i < 5; i++) {
             printf("\n------------------------\n");
-            printf("entrance id %d status: lpr:%s \t digital sign: %c \tboomgate: %c\n", i + 1, en_lpr[i]->license, ist[i]->s, en_bg[i]->s);
-            printf("level %d: lpr: %s \tcapacity: %d \t temperature: %d Celsisus \tStatus: %d \n", i + 1, lv_lpr[i]->license, num_lv[i], lv[i]->temp, lv[i]->sign);
-            printf("exit id %d status: lpr:%s \tboomgate: %c\n", i + 1, ex_lpr[i]->license, en_bg[i]->s);
+            printf("entrance %d status: lpr:%s \t boomgate: %c \t digital sign: %c\n", i + 1, en_lpr[i]->license, en_bg[i]->s, ist[i]->s);
+            printf("exit %d status:     lpr:%s \t boomgate: %c\n", i + 1, ex_lpr[i]->license, en_bg[i]->s);
+            printf("level %d status:    lpr:%s \t capacity: %d \t temp: %d°C \t alarm status: %d\n", i + 1, lv_lpr[i]->license, num_lv[i], lv[i]->temp, lv[i]->sign);
+
             printf("------------------------\n");
         }
         // htab_print(&h_billing);
@@ -581,12 +582,12 @@ int main() {
 
     while ((*(char *)(ptr + 2919)) == 0) {
         if (alarm_active) {
+            fprintf(stderr, "*** ALARM ACTIVE ***\n");
             break;
         }
         usleep(1000);
     };
 
-    fprintf(stderr, "*** ALARM ACTIVE ***\n");
 
     while ((*(char *)(ptr + 2919)) == 0) {
     };
