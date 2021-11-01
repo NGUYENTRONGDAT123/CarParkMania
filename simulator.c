@@ -67,6 +67,9 @@ pthread_cond_t cond_car_ex[5];
 int lv_id[5];
 int temp_type;
 
+pthread_t *check_temp_threads;
+int alarm_active = 0;
+
 // initalize hash tables for storing plates from txt
 bool store_plates()
 {
@@ -423,7 +426,7 @@ void *simulate_temp(void *arg)
             {
                 base_temp = base_temp + (rand() % 2);
             }
-            lv[id]->temp = (rand() % 8) + base_temp;
+            lv[id]->temp = (rand() % 4) + base_temp;
         }
         else if (temp_type == 3)
         {
@@ -442,7 +445,7 @@ void *simulate_temp(void *arg)
         }
         count++;
         usleep((rand() % 5) * 1000);
-        printf("%d\n", lv[id]->temp);
+        //printf("%d\n", lv[id]->temp);
     }
 }
 
@@ -538,7 +541,7 @@ void simulate_car_entering(car_t *car, int entrance_id)
         // this car is removed
         pthread_mutex_unlock(&ist[entrance_id]->m);
     }
-    else if (ist[entrance_id]->s > 48 && ist[entrance_id]->s < 54)
+    else if (ist[entrance_id]->s > 48 && ist[entrance_id]->s < 54 && !alarm_active)
     {
         // printf("this car can be parked on level %c! \n", ist[entrance_id]->s);
         pthread_mutex_unlock(&ist[entrance_id]->m);
@@ -580,7 +583,7 @@ void *simulate_car_entering_handler(void *arg)
     // do forever
     for (;;)
     {
-        if (num_car_entrance[id] > 0)
+        if (num_car_entrance[id] > 0 && !alarm_active)
         {
             a_car = get_car_entrance(id);
             if (a_car)
@@ -596,6 +599,18 @@ void *simulate_car_entering_handler(void *arg)
             // wait for cars
             pthread_cond_wait(&cond_car_en[id], &mutex_car_en[id]);
         }
+    }
+}
+
+void *check_temp(void *arg) {
+    int id = (*(int *)arg);
+    char *sign = ptr + 104 * id + 2498;
+    for (;;) {
+        if ((*sign) == 1) {
+            // printf("I have awakened!\n");
+            alarm_active = 1;
+        }
+        usleep(1000);
     }
 }
 //--------------------entrance threads function ------------------
@@ -628,7 +643,6 @@ int main(int argc, char *argv[])
 
     temp_type = atoi(argv[2]);
 
-    printf("%d\n", temp_type);
     // attributes for mutex and cond
     pthread_mutexattr_t m_shared;
     pthread_condattr_t c_shared;
@@ -670,6 +684,9 @@ int main(int argc, char *argv[])
     // initialize mutexes and condition variables
     pthread_mutex_init(&mutex_car, &m_shared);
     pthread_cond_init(&cond_car, &c_shared);
+
+    check_temp_threads = malloc(sizeof(pthread_t) * LEVELS);
+
 
     // create 5 entrance, exit and level lpr
     for (int i = 0; i < 5; i++)
@@ -759,6 +776,7 @@ int main(int argc, char *argv[])
     {
         en_id[i] = i;
         pthread_create(queuing_cars_entrance + i, NULL, simulate_car_entering_handler, (void *)&en_id[i]);
+        pthread_create(check_temp_threads + i, NULL, check_temp, (void *)&i);
     }
 
     generate_car = malloc(sizeof(pthread_t) * 1);

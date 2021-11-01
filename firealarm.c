@@ -20,7 +20,7 @@ pthread_cond_t alarm_condvar = PTHREAD_COND_INITIALIZER;
 
 #define MEDIAN_WINDOW 5
 #define TEMPCHANGE_WINDOW 30
-
+int lv_id[LEVELS];
 struct boomgate
 {
     pthread_mutex_t m;
@@ -65,7 +65,7 @@ void *tempmonitor(void *arg)
     struct tempnode *newtemp;
     struct tempnode *medianlist = malloc(sizeof(struct tempnode));
     struct tempnode *oldesttemp;
-    int16_t count;
+    int32_t count;
     int16_t addr;
     unsigned short temp;
     int16_t mediantemp;
@@ -83,10 +83,10 @@ void *tempmonitor(void *arg)
         newtemp->temperature = temp;
         newtemp->next = templist;
         templist = newtemp;
+        //printf("%d\n", temp);
 
         // Delete nodes after 5th
         deletenodes(templist, MEDIAN_WINDOW);
-        printf("%d\n", temp);
 
         // Count nodes
         count = 0;
@@ -111,6 +111,7 @@ void *tempmonitor(void *arg)
             newtemp->temperature = mediantemp;
             newtemp->next = medianlist;
             medianlist = newtemp;
+            //printf("%d\n", mediantemp);
 
             // Delete nodes after 30th
             deletenodes(medianlist, TEMPCHANGE_WINDOW);
@@ -121,12 +122,17 @@ void *tempmonitor(void *arg)
 
             for (struct tempnode *t = medianlist; t != NULL; t = t->next)
             {
+                //printf("%d\n", t->temperature);
                 // Temperatures of 58 degrees and higher are a concern
                 if (t->temperature >= 58)
+                {
                     hightemps++;
+                    //printf("ADDING HIGHTEMP");
+                }
                 // Store the oldest temperature for rate-of-rise detection
                 oldesttemp = t;
                 count++;
+                //printf("%d\n", t->temperature);
             }
 
             if (count == TEMPCHANGE_WINDOW)
@@ -136,7 +142,7 @@ void *tempmonitor(void *arg)
                 // this is considered a high temperature. Raise the alarm
                 if (hightemps >= TEMPCHANGE_WINDOW * 0.9)
                 {
-                    printf("1\n");
+                    //printf("1\n");
                     alarm_active = 1;
                     sign = shm + addr + 2;
                     *sign = 1;
@@ -145,9 +151,11 @@ void *tempmonitor(void *arg)
                 // If the newest temp is >= 8 degrees higher than the oldest
                 // temp (out of the last 30), this is a high rate-of-rise.
                 // Raise the alarm
-                if (templist->temperature - oldesttemp->temperature >= 8)
+                if (templist->temperature - oldesttemp->temperature >= 8 && oldesttemp->temperature != 0)
                 {
-                    printf("2\n");
+                    // printf("%d\n", templist->temperature);
+                    // printf("%d\n", oldesttemp->temperature);
+                    //printf("2\n");
                     alarm_active = 1;
                     sign = shm + addr + 2;
                     *sign = 1;
@@ -163,7 +171,7 @@ void *open_en_boomgate(void *arg)
 {
     // struct boomgate *bg = arg;
     int i = *((int *)arg);
-    struct boomgate *bg = shm + 288 * i + 96;
+    struct boomgate *bg = shm + (288 * i) + 96;
 
     for (;;)
     {
@@ -190,9 +198,9 @@ void *open_en_boomgate(void *arg)
 
 void *open_ex_boomgate(void *arg)
 {
-    // struct boomgate *bg = arg;
+    // // struct boomgate *bg = arg;
     int i = *((int *)arg);
-    struct boomgate *bg = shm + 192 * i + 1536;
+    struct boomgate *bg = shm + (192 * i) + 1536;
 
     for (;;)
     {
@@ -232,7 +240,8 @@ int main()
 
     for (int i = 0; i < LEVELS; i++)
     {
-        pthread_create(threads + i, NULL, tempmonitor, (void *)&i);
+        lv_id[i] = i;
+        pthread_create(threads + i, NULL, tempmonitor, (void *)&lv_id[i]);
     }
     for (;;)
     {
@@ -254,7 +263,7 @@ int main()
         // Activate alarms on all levels
         for (int i = 0; i < LEVELS; i++)
         {
-            int addr = 0150 * i + 2498;
+            int addr = 104 * i + 2498;
             char *alarm_trigger = (char *)shm + addr;
             *alarm_trigger = 1;
         }
