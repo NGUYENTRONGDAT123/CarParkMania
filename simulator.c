@@ -430,7 +430,7 @@ void *simulate_temp(void *arg)
         }
         else if (temp_type == 3)
         {
-            if (count >= 2000)
+            if (count >= 3000)
             {
                 lv[id]->temp = (rand() % 15) + base_temp;
             }

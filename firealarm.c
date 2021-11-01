@@ -83,7 +83,6 @@ void *tempmonitor(void *arg)
         newtemp->temperature = temp;
         newtemp->next = templist;
         templist = newtemp;
-        //printf("%d\n", temp);
 
         // Delete nodes after 5th
         deletenodes(templist, MEDIAN_WINDOW);
@@ -111,7 +110,6 @@ void *tempmonitor(void *arg)
             newtemp->temperature = mediantemp;
             newtemp->next = medianlist;
             medianlist = newtemp;
-            //printf("%d\n", mediantemp);
 
             // Delete nodes after 30th
             deletenodes(medianlist, TEMPCHANGE_WINDOW);
@@ -122,27 +120,22 @@ void *tempmonitor(void *arg)
 
             for (struct tempnode *t = medianlist; t != NULL; t = t->next)
             {
-                //printf("%d\n", t->temperature);
                 // Temperatures of 58 degrees and higher are a concern
                 if (t->temperature >= 58)
                 {
                     hightemps++;
-                    //printf("ADDING HIGHTEMP");
                 }
                 // Store the oldest temperature for rate-of-rise detection
                 oldesttemp = t;
                 count++;
-                //printf("%d\n", t->temperature);
             }
 
             if (count == TEMPCHANGE_WINDOW)
             {
-                //printf("%d\n", templist->temperature);
                 // If 90% of the last 30 temperatures are >= 58 degrees,
                 // this is considered a high temperature. Raise the alarm
                 if (hightemps >= TEMPCHANGE_WINDOW * 0.9)
                 {
-                    //printf("1\n");
                     alarm_active = 1;
                     sign = shm + addr + 2;
                     *sign = 1;
@@ -153,9 +146,7 @@ void *tempmonitor(void *arg)
                 // Raise the alarm
                 if (templist->temperature - oldesttemp->temperature >= 8 && oldesttemp->temperature != 0)
                 {
-                    // printf("%d\n", templist->temperature);
-                    // printf("%d\n", oldesttemp->temperature);
-                    //printf("2\n");
+                
                     alarm_active = 1;
                     sign = shm + addr + 2;
                     *sign = 1;
@@ -179,7 +170,6 @@ void *open_en_boomgate(void *arg) {
             pthread_mutex_unlock(&bg->m);
             pthread_cond_broadcast(&bg->c);
         } else if (bg->s == 'O') {
-            printf("Entrance boomgate %d is: %c\n", i + 1, bg->s);
             pthread_cond_wait(&bg->c, &bg->m);
         } else {
             pthread_mutex_unlock(&bg->m);
@@ -191,7 +181,7 @@ void *open_ex_boomgate(void *arg) {
     // struct boomgate *bg = arg;
     int i = *((int *)arg);
     struct boomgate *bg = shm + 192 * i + 1536;
-
+    
     for (;;) {
         pthread_mutex_lock(&bg->m);
         if (bg->s != 'O') {
@@ -199,7 +189,6 @@ void *open_ex_boomgate(void *arg) {
             pthread_mutex_unlock(&bg->m);
             pthread_cond_broadcast(&bg->c);
         } else if (bg->s == 'O') {
-            printf("Exit boomgate %d is: %c\n", i + 1, bg->s);
             pthread_cond_wait(&bg->c, &bg->m);
         } else {
             pthread_mutex_unlock(&bg->m);
@@ -256,7 +245,6 @@ int main()
         for (int i = 0; i < ENTRANCES; i++)
         {
             en_id[i] = i;
-            // printf("%d\n", en_id[i]);
             // int addr = 288 * i + 96;
             // struct boomgate *bg = shm + addr;
             pthread_create(boomgatethreads + i, NULL, open_en_boomgate, (void *)&en_id[i]);
