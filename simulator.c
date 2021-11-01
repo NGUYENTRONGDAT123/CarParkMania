@@ -541,7 +541,7 @@ void simulate_car_entering(car_t *car, int entrance_id)
         // this car is removed
         pthread_mutex_unlock(&ist[entrance_id]->m);
     }
-    else if (ist[entrance_id]->s > 48 && ist[entrance_id]->s < 54 && !alarm_active)
+    else if (ist[entrance_id]->s > 48 && ist[entrance_id]->s < 54)
     {
         // printf("this car can be parked on level %c! \n", ist[entrance_id]->s);
         pthread_mutex_unlock(&ist[entrance_id]->m);

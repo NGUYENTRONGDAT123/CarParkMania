@@ -167,58 +167,41 @@ void *tempmonitor(void *arg)
     }
 }
 
-void *open_en_boomgate(void *arg)
-{
+void *open_en_boomgate(void *arg) {
     // struct boomgate *bg = arg;
     int i = *((int *)arg);
-    struct boomgate *bg = shm + (288 * i) + 96;
+    struct boomgate *bg = shm + 288 * i + 96;
 
-    for (;;)
-    {
+    for (;;) {
         pthread_mutex_lock(&bg->m);
-        if (bg->s == 'C')
-        {
+        if (bg->s == 'C') {
             bg->s = 'R';
             pthread_mutex_unlock(&bg->m);
             pthread_cond_broadcast(&bg->c);
-        }
-        else if (bg->s == 'O')
-        {
+        } else if (bg->s == 'O') {
             printf("Entrance boomgate %d is: %c\n", i + 1, bg->s);
             pthread_cond_wait(&bg->c, &bg->m);
+        } else {
             pthread_mutex_unlock(&bg->m);
         }
-        else
-        {
-            pthread_mutex_unlock(&bg->m);
-        }
-        usleep(1000);
     }
 }
 
-void *open_ex_boomgate(void *arg)
-{
-    // // struct boomgate *bg = arg;
+void *open_ex_boomgate(void *arg) {
+    // struct boomgate *bg = arg;
     int i = *((int *)arg);
-    struct boomgate *bg = shm + (192 * i) + 1536;
+    struct boomgate *bg = shm + 192 * i + 1536;
 
-    for (;;)
-    {
+    for (;;) {
         pthread_mutex_lock(&bg->m);
-        if (bg->s == 'C')
-        {
+        if (bg->s != 'O') {
             bg->s = 'R';
             pthread_mutex_unlock(&bg->m);
             pthread_cond_broadcast(&bg->c);
-        }
-        else if (bg->s == 'O')
-        {
+        } else if (bg->s == 'O') {
             printf("Exit boomgate %d is: %c\n", i + 1, bg->s);
             pthread_cond_wait(&bg->c, &bg->m);
-            pthread_mutex_unlock(&bg->m);
-        }
-        else
-        {
+        } else {
             pthread_mutex_unlock(&bg->m);
         }
     }
